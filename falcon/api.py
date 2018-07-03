@@ -371,7 +371,8 @@ class API(object):
 
         self._router.add_route(uri_template, resource, **kwargs)
 
-    def add_static_route(self, prefix, directory, downloadable=False, fallback_filename=None):
+    def add_static_route(self, prefix, directory, downloadable=False, fallback_filename=None,
+                         etags=True):
         """Add a route to a directory of static files.
 
         Static routes provide a way to serve files directly. This
@@ -415,13 +416,16 @@ class API(object):
             fallback_filename (str): Fallback filename used when the requested file
                 is not found. Can be a relative path inside the prefix folder or any valid
                 absolute path.
+            etags (bool): Whether to generate Nginx-style (mtime-size) ETag
+                headers for files being served.
 
         """
 
         self._static_routes.insert(
             0,
             routing.StaticRoute(prefix, directory, downloadable=downloadable,
-                                fallback_filename=fallback_filename)
+                                fallback_filename=fallback_filename,
+                                etags=etags)
         )
 
     def add_sink(self, sink, prefix=r'/'):

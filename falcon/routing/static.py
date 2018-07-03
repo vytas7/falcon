@@ -36,7 +36,8 @@ class StaticRoute(object):
     # minimizes how much can be included in the payload.
     _MAX_NON_PREFIXED_LEN = 512
 
-    def __init__(self, prefix, directory, downloadable=False, fallback_filename=None):
+    def __init__(self, prefix, directory, downloadable=False, fallback_filename=None,
+                 etags=True):
         if not prefix.startswith('/'):
             raise ValueError("prefix must start with '/'")
 
@@ -59,12 +60,26 @@ class StaticRoute(object):
         self._prefix = prefix
         self._directory = directory
         self._downloadable = downloadable
+        self._etags = etags
 
     def match(self, path):
         """Check whether the given path matches this route."""
         if self._fallback_filename is None:
             return path.startswith(self._prefix)
         return path.startswith(self._prefix) or path == self._prefix[:-1]
+
+    def generate_etag(self, resp):
+        """Attempts to generate the ETag header from the file status.
+
+        The ETag is derived from the file modification timestamp and the size
+        of the file object being served. The algorithm is identical to what
+        Nginx web server is using.
+        """
+        try:
+            result = os.fstat(resp.stream.fileno())
+            resp.etag = '"%X-%X"' % (result.st_mtime, result.st_size)
+        except OSError:
+            raise falcon.HTTPNotFound()
 
     def __call__(self, req, resp):
         """Resource responder for this route."""
@@ -105,6 +120,9 @@ class StaticRoute(object):
                 resp.stream = io.open(self._fallback_filename, 'rb')
             except IOError:
                 raise falcon.HTTPNotFound()
+
+        if self._etags:
+            self.generate_etag(resp)
 
         suffix = os.path.splitext(file_path)[1]
         resp.content_type = resp.options.static_media_types.get(
