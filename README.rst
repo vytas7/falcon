@@ -690,7 +690,7 @@ See also: `CONTRIBUTING.md <https://github.com/falconry/falcon/blob/master/CONTR
 Legal
 -----
 
-Copyright 2013-2018 by Individual and corporate contributors as
+Copyright 2013-2019 by Individual and corporate contributors as
 noted in the individual source files.
 
 Falcon image courtesy of `John
