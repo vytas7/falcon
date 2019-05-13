@@ -145,6 +145,8 @@ class NopeHandler(media.BaseHandler):
     def deserialize(self, *args, **kwargs):
         pass
 
+    exhaust_stream = True
+
 
 def test_complete_consumption():
     client = create_client({
