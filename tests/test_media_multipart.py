@@ -7,6 +7,12 @@ from falcon import media
 from falcon import testing
 
 
+class MockBoundedStream(io.BytesIO):
+
+    def exhaust(self):
+        self.read()
+
+
 EXAMPLE1 = (
     b'--5b11af82ab65407ba8cdccf37d2a9c4f\r\n'
     b'Content-Disposition: form-data; name="hello"\r\n\r\n'
@@ -38,15 +44,29 @@ EXAMPLE2 = (
     b'-----------------------------1574247108204320607285918568--\r\n'
 )
 
+EXAMPLE3 = (
+    b'--BOUNDARY\r\n'
+    b'Content-Disposition: form-data; name="file"; filename="bytes"\r\n'
+    b'Content-Type: application/x-falcon\r\n\r\n' +
+    b'123456789abcdef\n' * 64 * 1024 +
+    b'\r\n'
+    b'--BOUNDARY\r\n'
+    b'Content-Disposition: form-data; name="empty"\r\n'
+    b'Content-Type: text/plain\r\n\r\n'
+    b'\r\n'
+    b'--BOUNDARY--\r\n'
+)
+
 
 @pytest.mark.parametrize('example,boundary', [
     (EXAMPLE1, '5b11af82ab65407ba8cdccf37d2a9c4f'),
     (EXAMPLE2, '---------------------------1574247108204320607285918568'),
+    (EXAMPLE3, 'BOUNDARY'),
 ])
 def test_parse(example, boundary):
     handler = media.MultipartFormHandler()
     form = handler.deserialize(
-        io.BytesIO(example),
+        MockBoundedStream(example),
         'multipart/form-data; boundary=' + boundary,
         len(example))
 
@@ -60,7 +80,12 @@ class TextParser:
     def on_post(self, req, resp):
         values = []
         for part in req.media:
-            values.append(part.text)
+            values.append({
+                'content_type': part.content_type,
+                'filename': part.filename,
+                'name': part.name,
+                'text': part.text,
+            })
 
         resp.media = values
 
@@ -84,4 +109,17 @@ def test_e2e():
         },
         body=EXAMPLE1)
 
-    assert resp.json == ['world', 'Hello, world!\n']
+    assert resp.json == [
+        {
+            'content_type': 'text/plain',
+            'filename': None,
+            'name': 'hello',
+            'text': 'world',
+        },
+        {
+            'content_type': 'text/plain',
+            'filename': 'test.txt',
+            'name': 'file1',
+            'text': 'Hello, world!\n',
+        },
+    ]

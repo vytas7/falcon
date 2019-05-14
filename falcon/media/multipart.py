@@ -1,3 +1,4 @@
+import cgi
 import functools
 import io
 import sys
@@ -6,7 +7,7 @@ from falcon.media import BaseHandler
 
 
 _CHUNK_SIZE = io.DEFAULT_BUFFER_SIZE
-_BUFFER_NEEDED = _CHUNK_SIZE + 70 + 2
+_BUFFER_NEEDED = _CHUNK_SIZE + 70 + 2 + 2
 
 _ALLOWED_CONTENT_HEADERS = frozenset([
     b'content-type',
@@ -26,11 +27,17 @@ class MultipartStreamWrapper(io.IOBase):
         self.read = read
         self.pipe = pipe
 
+    def exhaust(self):
+        self.pipe()
+
 
 class BodyPart:
 
-    _stream = None
+    _content_disposition = None
     _data = None
+    _filename = None
+    _name = None
+    _stream = None
 
     def __init__(self, read, pipe, headers):
         self._read = read
@@ -57,10 +64,53 @@ class BodyPart:
 
     @property
     def content_type(self):
-        value = self._headers.get(b'content_type')
-        if value is None:
-            return value
+        # NOTE(vytas): RFC 7578, section 4.4.
+        #   Each part MAY have an (optional) "Content-Type" header field, which
+        #   defaults to "text/plain".
+        value = self._headers.get(b'content_type') or b'text/plain'
         return value.decode('ascii')
+
+    @property
+    def filename(self):
+        if self._filename is None:
+
+            if self._content_disposition is None:
+                value = self._headers.get(b'content-disposition')
+                if not value:
+                    return None
+                self._content_disposition = cgi.parse_header(value.decode())
+
+            _, params = self._content_disposition
+            value = params.get('filename')
+            # TODO(vytas): Consider supporting filename* as that has been
+            #   spotted in the wild, even though RFC 7578 forbids it.
+            if value is None:
+                return None
+            self._filename = value
+
+        return self._filename
+
+    @property
+    def name(self):
+        if self._name is None:
+
+            if self._content_disposition is None:
+                value = self._headers.get(b'content-disposition')
+                if not value:
+                    return None
+                self._content_disposition = cgi.parse_header(value.decode())
+
+            _, params = self._content_disposition
+            value = params.get('name')
+            if value is None:
+                return None
+            self._name = value
+
+        return self._name
+
+    @property
+    def media(self):
+        raise AttributeError('TODO')
 
 
 class MultipartForm:
@@ -133,23 +183,23 @@ class MultipartForm:
         self._buffer = has_delimiter + remainder
 
     def __iter__(self):
+        delimiter = self._dash_boundary
+
         while True:
             # Either exhaust the unused part stream part, or skip prologue
-            self._pipe_until(self._dash_boundary)
-            self._buffer = self._buffer[len(self._dash_boundary):]
+            self._pipe_until(delimiter)
+            self._buffer = self._buffer[len(delimiter):]
 
-            if not self._dash_boundary.startswith(b'\r\n'):
-                self._dash_boundary = b'\r\n' + self._dash_boundary
+            if not delimiter.startswith(b'\r\n'):
+                delimiter = b'\r\n' + delimiter
 
             separator = self._read_until(b'\r\n', 2)
             if separator == b'--':
                 if not self._buffer.startswith(b'\r\n'):
                     raise MultipartParseError('unexpected form epilogue')
-                # TODO(vytas): the tests are currently based on io.BytesIO
-                # self._stream.exhaust()
                 break
             elif separator:
-                raise MultipartParseError('unexpected data structure')
+                raise MultipartParseError('unexpected form structure')
 
             headers = {}
             headers_block = self._read_until(b'\r\n\r\n')
@@ -159,14 +209,26 @@ class MultipartForm:
                 name, sep, value = line.partition(b': ')
                 if sep:
                     name = name.lower()
+
+                    # NOTE(vytas): RFC 7578, section 4.5.
+                    #   This use is deprecated for use in contexts that support
+                    #   binary data such as HTTP. Senders SHOULD NOT generate
+                    #   any parts with a Content-Transfer-Encoding header
+                    #   field.
+                    if name == b'content-transfer-encoding':
+                        raise MultipartParseError(
+                            'the deprecated Content-Transfer-Encoding header '
+                            'field is unsupported')
                     # NOTE(vytas): Other header fields MUST NOT be included and
                     #   MUST be ignored.
-                    if name in _ALLOWED_CONTENT_HEADERS:
+                    elif name in _ALLOWED_CONTENT_HEADERS:
                         headers[name] = value
 
-            read = functools.partial(self._read_until, self._dash_boundary)
-            pipe = functools.partial(self._pipe_until, self._dash_boundary)
+            read = functools.partial(self._read_until, delimiter)
+            pipe = functools.partial(self._pipe_until, delimiter)
             yield BodyPart(read, pipe, headers)
+
+        self._stream.exhaust()
 
 
 class MultipartFormHandler(BaseHandler):
