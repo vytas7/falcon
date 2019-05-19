@@ -146,7 +146,7 @@ class MultipartForm:
 
             if have_bytes >= amount:
                 data = b''.join(result)
-                self._buffer = data[amount:]
+                self._buffer = current + data[amount:]
                 return data[:amount]
 
         data, has_delimiter, remainder = current.partition(delimiter)
