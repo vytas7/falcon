@@ -67,7 +67,7 @@ class BodyPart:
         # NOTE(vytas): RFC 7578, section 4.4.
         #   Each part MAY have an (optional) "Content-Type" header field, which
         #   defaults to "text/plain".
-        value = self._headers.get(b'content_type') or b'text/plain'
+        value = self._headers.get(b'content-type') or b'text/plain'
         return value.decode('ascii')
 
     @property

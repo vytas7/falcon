@@ -18,6 +18,10 @@ EXAMPLE1 = (
     b'Content-Disposition: form-data; name="hello"\r\n\r\n'
     b'world\r\n'
     b'--5b11af82ab65407ba8cdccf37d2a9c4f\r\n'
+    b'Content-Disposition: form-data; name="document"\r\n'
+    b'Content-Type: application/json\r\n\r\n'
+    b'{"debug": true, "message": "Hello, world!", "score": 7}\r\n'
+    b'--5b11af82ab65407ba8cdccf37d2a9c4f\r\n'
     b'Content-Disposition: form-data; name="file1"; filename="test.txt"\r\n'
     b'Content-Type: text/plain\r\n\r\n'
     b'Hello, world!\n\r\n'
@@ -116,6 +120,11 @@ def test_e2e():
             'name': 'hello',
             'text': 'world',
         },
+        {
+            'content_type': 'application/json',
+            'filename': None,
+            'name': 'document',
+            'text': '{"debug": true, "message": "Hello, world!", "score": 7}'},
         {
             'content_type': 'text/plain',
             'filename': 'test.txt',
