@@ -20,7 +20,42 @@ cdef class BufferedStream:
         self._buffer_len = 0
         self._max_bytes_remaining = max_stream_len
 
+    def peek(self, int amount=-1):
+        cdef int read_amount
+
+        amount = int(amount)
+        if amount < 0 or amount > self._chunk_size:
+            amount = self._chunk_size
+
+        if self._buffer_len < amount:
+            read_amount = self._chunk_size - self._buffer_len
+            if read_amount >= self._max_bytes_remaining:
+                read_amount = self._max_bytes_remaining
+
+            self._max_bytes_remaining -= read_amount
+            self._buffer += self._read(read_amount)
+            self._buffer_len = len(self._buffer)
+
+        return self._buffer[:amount]
+
+
     def read(self, amount=-1):
+        cdef int read_amount
+
+        if amount is None:
+            read_amount = -1
+        else:
+            read_amount = amount
+
+        if (read_amount == -1 or
+                read_amount >= self._max_bytes_remaining + self._buffer_len):
+            read_amount = self._max_bytes_remaining + self._buffer_len
+
+        return self._cy_read(read_amount)
+
+    cdef _cy_read(self, int amount):
+        cdef int read_amount
+
         if (amount == -1 or amount is None or
                 amount >= self._max_bytes_remaining + self._buffer_len):
             amount = self._max_bytes_remaining + self._buffer_len
@@ -42,20 +77,37 @@ cdef class BufferedStream:
             return result
 
         # NOTE(vytas): if amount > self._buffer_len
-        self._buffer_len = 0
+        read_amount = amount - self._buffer_len
         result = self._buffer
+        self._buffer_len = 0
         self._buffer = b''
-        self._max_bytes_remaining -= amount - self._buffer_len
-        return result + self._read(amount - self._buffer_len)
+        self._max_bytes_remaining -= read_amount
+        return result + self._read(read_amount)
 
-    def read_until(self, delimiter, amount=-1, missing_delimiter_error=None):
-        if (amount == -1 or amount is None or
-                amount >= self._max_bytes_remaining + self._buffer_len):
-            amount = self._max_bytes_remaining + self._buffer_len
+    def read_until(self, bytes delimiter not None, amount=-1,
+                   missing_delimiter_error=None):
+        cdef int read_amount
 
-        result = []
-        have_bytes = 0
-        delimiter_len_1 = len(delimiter) - 1
+        if amount is None:
+            read_amount = -1
+        else:
+            read_amount = amount
+
+        if (read_amount == -1 or
+                read_amount >= self._max_bytes_remaining + self._buffer_len):
+            read_amount = self._max_bytes_remaining + self._buffer_len
+
+        return self._read_until(delimiter, read_amount,
+                                missing_delimiter_error)
+
+    cdef _read_until(self, bytes delimiter, int amount,
+                     missing_delimiter_error=None):
+        cdef result = []
+        cdef bint result_is_empty = True
+        cdef int have_bytes = 0
+        cdef int buffer_cutoff
+        cdef int delimiter_len_1 = len(delimiter) - 1
+
         if not 0 <= delimiter_len_1 < self._chunk_size:
             raise ValueError('delimiter length must be within [1, chunk_size]')
 
@@ -66,6 +118,8 @@ cdef class BufferedStream:
             read_amount = self._chunk_size
             if read_amount > self._max_bytes_remaining:
                 read_amount = self._max_bytes_remaining
+            if read_amount == 0:
+                break
             self._max_bytes_remaining -= read_amount
             next_chunk = self._read(read_amount)
             next_chunk_len = len(next_chunk)
@@ -88,7 +142,7 @@ cdef class BufferedStream:
             have_bytes += self._buffer_len
 
             if have_bytes >= amount:
-                if not result:
+                if result_is_empty:
                     if have_bytes == amount:
                         self._buffer_len = next_chunk_len
                         self._buffer = next_chunk
@@ -99,18 +153,14 @@ cdef class BufferedStream:
                     self._buffer = self._buffer[amount:] + next_chunk
                     return ret_value
 
-                if have_bytes == amount:
-                    result.append(self._buffer)
-                    self._buffer_len = next_chunk_len
-                    self._buffer = next_chunk
-                    return b''.join(result)
-
-                result.append(self._buffer[:have_bytes-amount])
+                buffer_cutoff = self._buffer_len - have_bytes + amount
+                result.append(self._buffer[:buffer_cutoff])
                 self._buffer_len = have_bytes - amount + next_chunk_len
-                self._buffer = self._buffer[have_bytes-amount:] + next_chunk
+                self._buffer = self._buffer[buffer_cutoff:] + next_chunk
                 return b''.join(result)
 
             result.append(self._buffer)
+            result_is_empty = False
             self._buffer_len = next_chunk_len
             self._buffer = next_chunk
 
@@ -119,15 +169,14 @@ cdef class BufferedStream:
             if missing_delimiter_error:
                 raise missing_delimiter_error(
                     'unexpected EOF without delimiter')
-            raise RuntimeError('TODO')
 
-        result.append(data[:amount-have_bytes])
-        self._buffer = data[amount-have_bytes:] + found_delimiter + remainder
+        result.append(data[:amount - have_bytes])
+        self._buffer = data[amount - have_bytes:] + found_delimiter + remainder
         self._buffer_len = len(self._buffer)
         return b''.join(result)
 
     def pipe(self, destination=None):
-        destination_is_not_none = (destination is not None)
+        cdef bint destination_is_not_none = (destination is not None)
 
         while True:
             chunk = self.read(self._chunk_size)
@@ -138,7 +187,7 @@ cdef class BufferedStream:
                 destination.write(chunk)
 
     def pipe_until(self, delimiter, destination=None):
-        destination_is_not_none = (destination is not None)
+        cdef bint destination_is_not_none = (destination is not None)
 
         while True:
             chunk = self.read_until(delimiter, self._chunk_size)
@@ -153,6 +202,24 @@ cdef class BufferedStream:
 
     def readline(self, size=-1):
         return self.read_until(b'\n', size) + self.read(1)
+
+    def readlines(self, hint=-1):
+        cdef int read = 0
+        cdef result = []
+
+        while True:
+            line = self.readline()
+            if not line:
+                break
+            result.append(line)
+
+            if hint >= 0:
+                read += len(line)
+                if read >= hint:
+                    break
+
+        return result
+
 
     # --- implementing IOBase methods, the duck-typing way ---
 
