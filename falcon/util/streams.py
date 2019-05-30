@@ -15,8 +15,8 @@ class BufferedStream:
 
     def peek(self, amount=-1):
         # PERF(vytas) In Cython, bind types:
-        #   int amount
-        #   int read_amount
+        #   cdef Py_ssize_t amount
+        #   cdef Py_ssize_t read_amount
 
         amount = int(amount)
         if amount < 0 or amount > self._chunk_size:
@@ -35,8 +35,8 @@ class BufferedStream:
 
     def read(self, amount=-1):
         # PERF(vytas) In Cython, bind types:
-        #   int amount
-        #   int read_amount
+        #   cdef Py_ssize_t amount
+        #   cdef Py_ssize_t read_amount
 
         if (amount == -1 or amount is None or
                 amount >= self._max_bytes_remaining + self._buffer_len):
@@ -68,7 +68,7 @@ class BufferedStream:
 
     def read_until(self, delimiter, amount=-1, missing_delimiter_error=None):
         # PERF(vytas) In Cython, bind types:
-        #   int amount
+        #   cdef Py_ssize_t amount
 
         if (amount == -1 or amount is None or
                 amount >= self._max_bytes_remaining + self._buffer_len):
@@ -79,12 +79,12 @@ class BufferedStream:
     def _read_until(self, delimiter, amount, missing_delimiter_error=None):
         # PERF(vytas) In Cython, bind types:
         #   cdef _read_until(...)
-        #   int amount
-        #   result
-        #   bool result_is_empty = True
-        #   int have_bytes = 0
-        #   int delimiter_len_1
-        #   int buffer_cutoff
+        #   cdef Py_ssize_t amount
+        #   cdef result
+        #   cdef bint result_is_empty = True
+        #   cdef Py_ssize_t have_bytes = 0
+        #   cdef Py_ssize_t delimiter_len_1
+        #   cdef Py_ssize_t buffer_cutoff
 
         result = []
         result_is_empty = True
@@ -160,7 +160,7 @@ class BufferedStream:
 
     def pipe(self, destination=None):
         # PERF(vytas) In Cython, bind types:
-        #   bool destination_is_not_none
+        #   cdef bint destination_is_not_none
 
         destination_is_not_none = (destination is not None)
 
@@ -174,7 +174,7 @@ class BufferedStream:
 
     def pipe_until(self, delimiter, destination=None):
         # PERF(vytas) In Cython, bind types:
-        #   bool destination_is_not_none
+        #   cdef bint destination_is_not_none
         destination_is_not_none = (destination is not None)
 
         while True:
@@ -193,7 +193,7 @@ class BufferedStream:
 
     def readlines(self, hint=-1):
         # PERF(vytas) In Cython, bind types:
-        #   int read
+        #   cdef Py_ssize_t read
         read = 0
         result = []
 

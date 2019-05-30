@@ -6,11 +6,11 @@ DEFAULT_CHUNK_SIZE = io.DEFAULT_BUFFER_SIZE * 2
 cdef class BufferedStream:
 
     cdef _read
-    cdef int _chunk_size
+    cdef Py_ssize_t _chunk_size
 
     cdef bytes _buffer
-    cdef int _buffer_len
-    cdef int _max_bytes_remaining
+    cdef Py_ssize_t _buffer_len
+    cdef Py_ssize_t _max_bytes_remaining
 
     def __cinit__(self, read, max_stream_len, chunk_size=None):
         self._read = read
@@ -20,10 +20,9 @@ cdef class BufferedStream:
         self._buffer_len = 0
         self._max_bytes_remaining = max_stream_len
 
-    def peek(self, int amount=-1):
-        cdef int read_amount
+    def peek(self, Py_ssize_t amount=-1):
+        cdef Py_ssize_t read_amount
 
-        amount = int(amount)
         if amount < 0 or amount > self._chunk_size:
             amount = self._chunk_size
 
@@ -38,27 +37,24 @@ cdef class BufferedStream:
 
         return self._buffer[:amount]
 
+    cdef Py_ssize_t _normalize_size(self, amount):
+        cdef Py_ssize_t result
+        cdef Py_ssize_t max_amount = self._max_bytes_remaining + self._buffer_len
+
+        if amount is None or amount == -1:
+            result = max_amount
+        else:
+            result = amount
+            if result == -1 or result >= max_amount:
+                result = max_amount
+
+        return result
 
     def read(self, amount=-1):
-        cdef int read_amount
+        return self._cy_read(self._normalize_size(amount))
 
-        if amount is None:
-            read_amount = -1
-        else:
-            read_amount = amount
-
-        if (read_amount == -1 or
-                read_amount >= self._max_bytes_remaining + self._buffer_len):
-            read_amount = self._max_bytes_remaining + self._buffer_len
-
-        return self._cy_read(read_amount)
-
-    cdef _cy_read(self, int amount):
-        cdef int read_amount
-
-        if (amount == -1 or amount is None or
-                amount >= self._max_bytes_remaining + self._buffer_len):
-            amount = self._max_bytes_remaining + self._buffer_len
+    cdef _cy_read(self, Py_ssize_t amount):
+        cdef Py_ssize_t read_amount
 
         if self._buffer_len == 0:
             self._max_bytes_remaining -= amount
@@ -86,27 +82,16 @@ cdef class BufferedStream:
 
     def read_until(self, bytes delimiter not None, amount=-1,
                    missing_delimiter_error=None):
-        cdef int read_amount
-
-        if amount is None:
-            read_amount = -1
-        else:
-            read_amount = amount
-
-        if (read_amount == -1 or
-                read_amount >= self._max_bytes_remaining + self._buffer_len):
-            read_amount = self._max_bytes_remaining + self._buffer_len
-
-        return self._read_until(delimiter, read_amount,
+        return self._read_until(delimiter, self._normalize_size(amount),
                                 missing_delimiter_error)
 
-    cdef _read_until(self, bytes delimiter, int amount,
+    cdef _read_until(self, bytes delimiter, Py_ssize_t amount,
                      missing_delimiter_error=None):
         cdef result = []
         cdef bint result_is_empty = True
-        cdef int have_bytes = 0
-        cdef int buffer_cutoff
-        cdef int delimiter_len_1 = len(delimiter) - 1
+        cdef Py_ssize_t have_bytes = 0
+        cdef Py_ssize_t buffer_cutoff
+        cdef Py_ssize_t delimiter_len_1 = len(delimiter) - 1
 
         if not 0 <= delimiter_len_1 < self._chunk_size:
             raise ValueError('delimiter length must be within [1, chunk_size]')
@@ -204,7 +189,7 @@ cdef class BufferedStream:
         return self.read_until(b'\n', size) + self.read(1)
 
     def readlines(self, hint=-1):
-        cdef int read = 0
+        cdef Py_ssize_t read = 0
         cdef result = []
 
         while True:
