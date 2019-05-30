@@ -1,6 +1,7 @@
+import functools
 import io
 
-DEFAULT_CHUNK_SIZE = io.DEFAULT_BUFFER_SIZE * 2
+DEFAULT_CHUNK_SIZE = io.DEFAULT_BUFFER_SIZE * 4
 
 
 class BufferedStream:
@@ -187,6 +188,14 @@ class BufferedStream:
 
     def exhaust(self):
         self.pipe()
+
+    def delimit(self, delimiter, missing_delimiter_error=None):
+        read = functools.partial(
+            self.read_until,
+            delimiter,
+            missing_delimiter_error=missing_delimiter_error)
+        return type(self)(read, self._max_bytes_remaining + self._buffer_len,
+                          self._chunk_size)
 
     def readline(self, size=-1):
         return self.read_until(b'\n', size) + self.read(1)

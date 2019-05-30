@@ -1,13 +1,23 @@
+"""
+Multipart form parsing.
+
+TODO: read also
+
+* https://www.w3.org/TR/2014/REC-html5-20141028/forms.html#multipart-form-data
+* https://www.w3.org/TR/encoding/#legacy-single-byte-encodings
+"""
 import cgi
-import functools
-import io
-import sys
 
-from falcon.media import BaseHandler
+from falcon import errors
+from falcon import request_helpers
+from falcon.media.base import BaseHandler
+from falcon.media.handlers import Handlers
+from falcon.util import BufferedStream
 
+# TODO(vytas): Improve class documentation
 
-_CHUNK_SIZE = io.DEFAULT_BUFFER_SIZE
-_BUFFER_NEEDED = _CHUNK_SIZE + 70 + 2 + 2
+# TODO(vytas): _charset_ junk
+
 
 _ALLOWED_CONTENT_HEADERS = frozenset([
     b'content-type',
@@ -15,52 +25,82 @@ _ALLOWED_CONTENT_HEADERS = frozenset([
     b'content-transfer-encoding',
 ])
 
+DEFAULT_SUPPORTED_CHARSETS = (
+    'utf-8',
+    'ibm866',
+    'iso-8859-2',
+    'iso-8859-3',
+    'iso-8859-4',
+    'iso-8859-5',
+    'iso-8859-6',
+    'iso-8859-7',
+    'iso-8859-8',
+    'iso-8859-10',
+    'iso-8859-13',
+    'iso-8859-14',
+    'iso-8859-15',
+    'iso-8859-16',
+    'koi8-r',
+    'koi8-u',
+    'macintosh',
+    'windows-1250',
+    'windows-1251',
+    'windows-1252',
+    'windows-1253',
+    'windows-1254',
+    'windows-1255',
+    'windows-1256',
+    'windows-1257',
+    'windows-1258',
+)
 
-# TODO(vytas): Inherit from falcon.HTTPBadRequest
-class MultipartParseError(Exception):
-    pass
 
+class MultipartParseError(errors.HTTPBadRequest):
 
-class MultipartStreamWrapper(io.IOBase):
-
-    def __init__(self, read, pipe):
-        self.read = read
-        self.pipe = pipe
-
-    def exhaust(self):
-        self.pipe()
+    def __init__(self, description=None, headers=None, **kwargs):
+        super().__init__('Malformed multipart/form-data request media',
+                         description, headers, **kwargs)
 
 
 class BodyPart:
+    """
+    Represents a body part in a multipart form.
+
+    Note:
+        `BodyPart` is meant to be instantiated directly only by the
+        `MultipartForm` parser.
+    """
 
     _content_disposition = None
     _data = None
     _filename = None
+    _media = None
     _name = None
-    _stream = None
 
-    def __init__(self, read, pipe, headers):
-        self._read = read
-        self._pipe = pipe
+    def __init__(self, stream, headers, parse_options):
+        self.stream = stream
         self._headers = headers
-
-    @property
-    def stream(self):
-        if self._stream is None:
-            self._stream = MultipartStreamWrapper(self._read, self._pipe)
-        return self._stream
+        self._parse_options = parse_options
 
     @property
     def data(self):
         if self._data is None:
-            self._data = self._read()
+            max_size = self._parse_options.max_body_part_buffer_size + 1
+            self._data = self.stream.read(max_size)
+            if len(self._data) >= max_size:
+                raise MultipartParseError('body part is too large')
+
         return self._data
 
     @property
     def text(self):
-        if self._data is None:
-            self._data = self._read()
-        return self._data.decode()
+        content_type, options = cgi.parse_header(self.content_type)
+        if content_type != 'text/plain':
+            return None
+
+        charset = options.get('charset') or self._parse_options.default_charset
+        assert charset in self._parse_options.supported_charsets
+        return self.data.decode(charset)
 
     @property
     def content_type(self):
@@ -75,9 +115,7 @@ class BodyPart:
         if self._filename is None:
 
             if self._content_disposition is None:
-                value = self._headers.get(b'content-disposition')
-                if not value:
-                    return None
+                value = self._headers.get(b'content-disposition', b'')
                 self._content_disposition = cgi.parse_header(value.decode())
 
             _, params = self._content_disposition
@@ -95,9 +133,7 @@ class BodyPart:
         if self._name is None:
 
             if self._content_disposition is None:
-                value = self._headers.get(b'content-disposition')
-                if not value:
-                    return None
+                value = self._headers.get(b'content-disposition', b'')
                 self._content_disposition = cgi.parse_header(value.decode())
 
             _, params = self._content_disposition
@@ -110,100 +146,56 @@ class BodyPart:
 
     @property
     def media(self):
-        raise AttributeError('TODO')
+        if self._media is None:
+            handler = self._parse_options.media_handlers.find_by_media_type(
+                self.content_type, 'text/plain')
+            self._media = handler.deserialize(
+                self.stream, self.content_type, None)
+
+        return self._media
 
 
 class MultipartForm:
 
-    def __init__(self, stream, boundary):
+    def __init__(self, stream, boundary, content_length, parse_options):
+        if not isinstance(stream, BufferedStream):
+            if isinstance(stream, request_helpers.BoundedStream):
+                stream = BufferedStream(stream.stream.read, content_length)
+            else:
+                stream = BufferedStream(stream.read, content_length)
+
         self._stream = stream
         self._boundary = boundary
-
         self._dash_boundary = b'--' + boundary
-        self._buffer = b''
-
-    def _read_until(self, delimiter, amount=None):
-        # TODO(vytas): This is a raw preview: optimize this code heavily;
-        #   potentially cythonize the hottest paths.
-        if amount is None or amount == -1:
-            amount = sys.maxsize
-        stream = self._stream
-        result = []
-        have_bytes = 0
-
-        current = self._buffer
-        while True:
-            if len(current) < _BUFFER_NEEDED:
-                current += stream.read(_BUFFER_NEEDED - len(current))
-                if len(current) < _BUFFER_NEEDED:
-                    break
-            if delimiter in current:
-                break
-
-            result.append(current[:_CHUNK_SIZE])
-            have_bytes += _CHUNK_SIZE
-            current = current[_CHUNK_SIZE:]
-
-            if have_bytes >= amount:
-                data = b''.join(result)
-                self._buffer = current + data[amount:]
-                return data[:amount]
-
-        data, has_delimiter, remainder = current.partition(delimiter)
-        if not has_delimiter:
-            raise MultipartParseError('unexpected EOF without delimiter')
-        data = b''.join(result) + data
-        self._buffer = data[amount:] + has_delimiter + remainder
-        return data[:amount]
-
-    def _pipe_until(self, delimiter, destination=None):
-        # TODO(vytas): This is a raw preview: optimize this code heavily;
-        #   potentially cythonize the hottest paths.
-        stream = self._stream
-        current = self._buffer
-
-        while True:
-            if len(current) < _BUFFER_NEEDED:
-                current += stream.read(_BUFFER_NEEDED - len(current))
-                if len(current) < _BUFFER_NEEDED:
-                    break
-            if delimiter in current:
-                break
-
-            if destination is not None:
-                destination.write(current[:_CHUNK_SIZE])
-            current = current[_CHUNK_SIZE:]
-
-        data, has_delimiter, remainder = current.partition(delimiter)
-        if not has_delimiter:
-            raise MultipartParseError('unexpected EOF without delimiter')
-        if destination is not None:
-            destination.write(data)
-
-        self._buffer = has_delimiter + remainder
+        self._parse_options = parse_options
 
     def __iter__(self):
         delimiter = self._dash_boundary
+        stream = self._stream
+        max_headers_size = self._parse_options.max_body_part_headers_size
+        remaining_part_count = self._parse_options.max_body_part_count
 
         while True:
-            # Either exhaust the unused part stream part, or skip prologue
-            self._pipe_until(delimiter)
-            self._buffer = self._buffer[len(delimiter):]
+            # NOTE(vytas): Either exhaust the unused stream part, or skip
+            #   the prologue.
+            stream.pipe_until(delimiter)
+            stream.read(len(delimiter))
 
             if not delimiter.startswith(b'\r\n'):
                 delimiter = b'\r\n' + delimiter
 
-            separator = self._read_until(b'\r\n', 2)
+            separator = stream.read_until(b'\r\n', 2, MultipartParseError)
             if separator == b'--':
-                if not self._buffer.startswith(b'\r\n'):
+                if stream.peek(2) != b'\r\n':
                     raise MultipartParseError('unexpected form epilogue')
                 break
             elif separator:
                 raise MultipartParseError('unexpected form structure')
 
             headers = {}
-            headers_block = self._read_until(b'\r\n\r\n')
-            self._buffer = self._buffer[4:]
+            headers_block = stream.read_until(b'\r\n\r\n', max_headers_size,
+                                              MultipartParseError)
+            stream.read(4)
 
             for line in headers_block.split(b'\r\n'):
                 name, sep, value = line.partition(b': ')
@@ -215,20 +207,28 @@ class MultipartForm:
                     #   binary data such as HTTP. Senders SHOULD NOT generate
                     #   any parts with a Content-Transfer-Encoding header
                     #   field.
+                    #
+                    #   Currently, no deployed implementations that send such
+                    #   bodies have been discovered.
                     if name == b'content-transfer-encoding':
                         raise MultipartParseError(
                             'the deprecated Content-Transfer-Encoding header '
                             'field is unsupported')
-                    # NOTE(vytas): Other header fields MUST NOT be included and
-                    #   MUST be ignored.
+                    # NOTE(vytas): RFC 7578, section 4.8.
+                    #   Other header fields MUST NOT be included and MUST be
+                    #   ignored.
                     elif name in _ALLOWED_CONTENT_HEADERS:
                         headers[name] = value
 
-            read = functools.partial(self._read_until, delimiter)
-            pipe = functools.partial(self._pipe_until, delimiter)
-            yield BodyPart(read, pipe, headers)
+            remaining_part_count -= 1
+            if remaining_part_count == 0:
+                raise MultipartParseError(
+                    'maximum number of form body parts exceeded')
 
-        self._stream.exhaust()
+            yield BodyPart(stream.delimit(delimiter, MultipartParseError),
+                           headers, self._parse_options)
+
+        stream.exhaust()
 
 
 class MultipartFormHandler(BaseHandler):
@@ -247,30 +247,66 @@ class MultipartFormHandler(BaseHandler):
        parse the body parts.
     """
 
+    def __init__(self, parse_options=None):
+        self.parse_options = parse_options or MultipartParseOptions()
+
     def deserialize(self, stream, content_type, content_length):
-        boundary = None
-        for key_value in content_type.split('; '):
-            _, _, boundary = key_value.partition('boundary=')
-            if boundary:
-                break
-
+        _, options = cgi.parse_header(content_type)
+        boundary = options.get('boundary')
         if boundary is None:
-            raise MultipartParseError(
-                'no boundary specifier found in {!r}'.format(content_type))
+            raise errors.HTTPInvalidHeader(
+                'No boundary specifier found in {!r}'.format(content_type),
+                'Content-Type')
 
-        # NOTE(vytas): If a boundary delimiter line appears to end with white
-        #   space, the white space must be presumed to have been added by a
-        #   gateway, and must be deleted.
+        # NOTE(vytas): RFC 2046, section 5.1.
+        #   If a boundary delimiter line appears to end with white space, the
+        #   white space must be presumed to have been added by a gateway, and
+        #   must be deleted.
         boundary = boundary.rstrip()
 
-        # NOTE(vytas): As per RFC 2046 section 5.1, the boundary parameter
-        #   consists of 1 to 70 characters from a set of characters known to be
-        #   very robust through mail gateways, and NOT ending with white space.
+        # NOTE(vytas): RFC 2046, section 5.1.
+        #   The boundary parameter consists of 1 to 70 characters from a set of
+        #   characters known to be very robust through mail gateways, and NOT
+        #   ending with white space.
         if not 1 <= len(boundary) <= 70:
-            raise MultipartParseError(
-                'the boundary parameter must consist of 1 to 70 characters')
+            raise errors.HTTPInvalidHeader(
+                'The boundary parameter must consist of 1 to 70 characters',
+                'Content-Type')
 
-        return MultipartForm(stream, boundary.encode())
+        return MultipartForm(stream, boundary.encode(), content_length,
+                             self.parse_options)
 
     def serialize(self, media, content_type):
         raise NotImplementedError('multipart form serialization unsupported')
+
+
+# PERF: To avoid typos and improve storage space and speed over a dict.
+class MultipartParseOptions:
+    """
+    Defines a set of configurable multipart form parse options.
+
+    Attributes:
+        max_body_part_count (int): The maximum amount of body part counts.
+
+        media_handlers (Handlers): A dict-like object that allows you to
+            configure the media-types that you would like to handle.
+            By default, a handler is provided for the ``application/json``
+            media type.
+    """
+
+    __slots__ = (
+        'default_charset',
+        'max_body_part_buffer_size',
+        'max_body_part_count',
+        'max_body_part_headers_size',
+        'media_handlers',
+        'supported_charsets',
+    )
+
+    def __init__(self):
+        self.default_charset = 'utf-8'
+        self.max_body_part_buffer_size = 1024 * 1024
+        self.max_body_part_count = 64
+        self.max_body_part_headers_size = 8192
+        self.media_handlers = Handlers()
+        self.supported_charsets = frozenset(DEFAULT_SUPPORTED_CHARSETS)
