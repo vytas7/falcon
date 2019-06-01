@@ -1,3 +1,5 @@
+from libc.stdint cimport uint32_t
+
 import functools
 import io
 
@@ -97,6 +99,17 @@ cdef class BufferedStream:
         if not 0 <= delimiter_len_1 < self._chunk_size:
             raise ValueError('delimiter length must be within [1, chunk_size]')
 
+        # PERF(vytas) Quickly check for the first 4 delimiter bytes
+        cdef bint quick_found = True
+        cdef uint32_t delimiter_head = 0
+        cdef uint32_t current
+        cdef Py_ssize_t index
+        cdef const unsigned char* ptr
+        if 3 <= delimiter_len_1 < 128:
+            ptr = delimiter
+            delimiter_head = (
+                (ptr[0] << 24) | (ptr[1] << 16) | (ptr[2] << 8) | ptr[3])
+
         while True:
             if delimiter in self._buffer:
                 break
@@ -119,11 +132,34 @@ cdef class BufferedStream:
                 break
 
             if delimiter_len_1 > 0:
-                if delimiter in (self._buffer[-delimiter_len_1:] +
-                                 next_chunk[:delimiter_len_1]):
-                    self._buffer_len += next_chunk_len
-                    self._buffer += next_chunk
-                    break
+                # PERF(vytas) Quickly check for the first 4 delimiter bytes
+                if 3 <= delimiter_len_1 < 128:
+                    quick_found = False
+                    ptr = self._buffer
+                    current = 0
+                    for index in range(self._buffer_len - delimiter_len_1,
+                                       self._buffer_len):
+                        current <<= 8
+                        current |= ptr[index]
+                        if current == delimiter_head:
+                            quick_found = True
+                            break
+
+                    if not quick_found:
+                        ptr = next_chunk
+                        for index in range(3):
+                            current <<= 8
+                            current |= ptr[index]
+                            if current == delimiter_head:
+                                quick_found = True
+                                break
+
+                if quick_found:
+                    if delimiter in (self._buffer[-delimiter_len_1:] +
+                                     next_chunk[:delimiter_len_1]):
+                        self._buffer_len += next_chunk_len
+                        self._buffer += next_chunk
+                        break
 
             have_bytes += self._buffer_len
 
