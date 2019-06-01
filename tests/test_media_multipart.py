@@ -5,6 +5,7 @@ import pytest
 import falcon
 from falcon import media
 from falcon import testing
+from falcon.util import BufferedStream
 
 
 EXAMPLE1 = (
@@ -131,6 +132,43 @@ def test_content_transfer_encoding_header():
             pass
 
 
+def test_unknown_header():
+    data = (
+        b'--BOUNDARY\r\n'
+        b'Content-Disposition: form-data; name="empty"\r\n'
+        b'Content-Coolness: fair\r\n'
+        b'Content-Type: text/plain\r\n\r\n'
+        b'\r\n'
+        b'--BOUNDARY--\r\n'
+    )
+
+    handler = media.MultipartFormHandler()
+    form = handler.deserialize(
+        io.BytesIO(data), 'multipart/form-data; boundary=BOUNDARY', len(data))
+
+    for part in form:
+        assert part.data == b''
+
+
+def test_from_buffered_stream():
+    data = (
+        b'--BOUNDARY\r\n'
+        b'Content-Disposition: form-data; name="empty"\r\n'
+        b'Content-Coolness: fair\r\n'
+        b'Content-Type: text/plain\r\n\r\n'
+        b'\r\n'
+        b'--BOUNDARY--\r\n'
+    )
+
+    handler = media.MultipartFormHandler()
+    stream = BufferedStream(io.BytesIO(data).read, len(data))
+    form = handler.deserialize(
+        stream, 'multipart/form-data; boundary=BOUNDARY', len(data))
+
+    for part in form:
+        assert part.data == b''
+
+
 def test_body_part_media():
     handler = media.MultipartFormHandler()
 
@@ -144,6 +182,21 @@ def test_body_part_media():
     for part in form:
         if part.content_type == 'application/json':
             assert part.media == part.media == expected
+
+
+def test_body_part_properties():
+    handler = media.MultipartFormHandler()
+
+    content_type = ('multipart/form-data; boundary=' +
+                    '5b11af82ab65407ba8cdccf37d2a9c4f')
+    form = handler.deserialize(
+        io.BytesIO(EXAMPLE1), content_type, len(EXAMPLE1))
+
+    for part in form:
+        if part.content_type == 'application/json':
+            assert part.name == part.name == 'document'
+        elif part.name == 'file1':
+            assert part.filename == part.filename == 'test.txt'
 
 
 class MultipartAnalyzer:

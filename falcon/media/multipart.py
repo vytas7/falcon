@@ -1,11 +1,3 @@
-"""
-Multipart form parsing.
-
-TODO: read also
-
-* https://www.w3.org/TR/2014/REC-html5-20141028/forms.html#multipart-form-data
-* https://www.w3.org/TR/encoding/#legacy-single-byte-encodings
-"""
 import cgi
 
 from falcon import errors
@@ -13,10 +5,6 @@ from falcon import request_helpers
 from falcon.media.base import BaseHandler
 from falcon.media.handlers import Handlers
 from falcon.util import BufferedStream
-
-# TODO(vytas): Improve class documentation
-
-# TODO(vytas): _charset_ junk
 
 
 _ALLOWED_CONTENT_HEADERS = frozenset([
@@ -62,6 +50,8 @@ class MultipartParseError(errors.HTTPBadRequest):
                          description, headers, **kwargs)
 
 
+# TODO(vytas): Consider supporting -charset- stuff.
+#   Does anyone use that (?)
 class BodyPart:
     """
     Represents a body part in a multipart form.
@@ -69,6 +59,20 @@ class BodyPart:
     Note:
         `BodyPart` is meant to be instantiated directly only by the
         `MultipartForm` parser.
+
+    Attributes:
+        content_type (str): Value of the Content-Type header, or the multipart
+            form default ``text/plain`` if the header is missing.
+        stream: File-like input object for reading the body part of the
+            multipart form request, if any. This object provides direct access
+            to the server's data stream and is non-seekable. The stream is
+            automatically delimited according to the multipart stream boundary.
+        media (object): Returns a deserialized form of the multipart body part.
+            When called, it will attempt to deserialize the body part stream
+            using the Content-Type header as well as the media-type handlers
+            configured via
+            :class:`falcon.media.multipart.MultipartParseOptions`.
+
     """
 
     _content_disposition = None
@@ -137,10 +141,7 @@ class BodyPart:
                 self._content_disposition = cgi.parse_header(value.decode())
 
             _, params = self._content_disposition
-            value = params.get('name')
-            if value is None:
-                return None
-            self._name = value
+            self._name = params.get('name')
 
         return self._name
 
@@ -287,7 +288,6 @@ class MultipartParseOptions:
 
     Attributes:
         max_body_part_count (int): The maximum amount of body part counts.
-
         media_handlers (Handlers): A dict-like object that allows you to
             configure the media-types that you would like to handle.
             By default, a handler is provided for the ``application/json``
