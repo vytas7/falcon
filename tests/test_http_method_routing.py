@@ -5,6 +5,9 @@ import pytest
 import falcon
 import falcon.testing as testing
 
+from _util import create_app  # NOQA
+
+
 HTTP_METHODS = (
     'CONNECT',
     'DELETE',
@@ -48,9 +51,9 @@ def resource_get_with_faulty_put():
     return GetWithFaultyPutResource()
 
 
-@pytest.fixture
-def client():
-    app = falcon.API()
+@pytest.fixture(params=[True, False])
+def client(request):
+    app = create_app(asgi=request.param)
 
     app.add_route('/stonewall', Stonewall())
 

@@ -14,6 +14,8 @@ import falcon
 from falcon import testing
 from falcon.routing.util import SuffixedMethodNotFoundError
 
+from _util import create_app  # NOQA
+
 
 _TEST_UUID = uuid.uuid4()
 _TEST_UUID_2 = uuid.uuid4()
@@ -119,9 +121,9 @@ def resource():
     return testing.SimpleTestResource()
 
 
-@pytest.fixture
-def client():
-    return testing.TestClient(falcon.API())
+@pytest.fixture(params=[True, False])
+def client(request):
+    return testing.TestClient(create_app(asgi=request.param))
 
 
 def test_root_path(client, resource):

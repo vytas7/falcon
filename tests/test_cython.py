@@ -12,4 +12,5 @@ class TestCythonized:
 
     @pytest.mark.skipif(not cython, reason='Cython not installed')
     def test_imported_from_c_modules(self):
+        print(falcon.api)
         assert 'falcon/api.py' not in str(falcon.api)
