@@ -592,9 +592,8 @@ def create_asgi_req(body=None, req_type=None, options=None, **kwargs):
             to instantiate. If not specified, the standard
             :py:class:`falcon.asgi.Request` class will simply be used.
         options (falcon.RequestOptions): An instance of
-            :py:class:`falcon.RequestOptions` that should be used to
-                determine certain aspects of request parsing in lieu of
-                the defaults.
+            :py:class:`falcon.RequestOptions` that should be used to determine
+            certain aspects of request parsing in lieu of the defaults.
     """
 
     scope = create_scope(**kwargs)
