@@ -991,7 +991,8 @@ class Request:
                 self.content_length
             )
         finally:
-            self.bounded_stream.exhaust()
+            if handler.exhaust_stream:
+                self.bounded_stream.exhaust()
 
         return self._media
 

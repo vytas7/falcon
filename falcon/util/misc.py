@@ -29,6 +29,8 @@ import functools
 import http
 import inspect
 import os
+import re
+import unicodedata
 import warnings
 
 from falcon import status_codes
@@ -46,6 +48,7 @@ __all__ = (
     'code_to_http_status',
 )
 
+_UNSAFE_CHARS = re.compile(r'[^a-zA-Z0-9.-]')
 
 # PERF(kgriffs): Avoid superfluous namespace lookups
 strptime = datetime.datetime.strptime
@@ -397,3 +400,25 @@ def set_coroutine_flag(func_or_meth):
         func_or_meth.__func__._coroutine = inspect.iscoroutinefunction(func_or_meth)
     else:
         func_or_meth._coroutine = inspect.iscoroutinefunction(func_or_meth)
+
+
+def secure_filename(filename):
+    """
+    Sanitize the provided `filename` using only the most common ASCII
+    characters for maximum portability and safety wrt using this name as a
+    filename on a regular file system.
+
+    Args:
+        filename (str): Arbitrary filename input from the request, such as
+            multipart form filename field.
+
+    Returns:
+        str: sanitized filename
+    """
+    # TODO(vytas): max_length (int): Maximum length of the returned
+    #     filename. Should the returned filename exceed this restriction, it is
+    #     truncated while attempting to preserve the extension.
+    filename = unicodedata.normalize('NFKD', filename)
+    if filename.startswith('.'):
+        filename = filename.replace('.', '_', 1)
+    return _UNSAFE_CHARS.sub('_', filename) or 'file'
