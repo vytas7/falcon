@@ -1,6 +1,6 @@
-import io
 import cgi
 import csv
+import io
 import json
 
 import falcon
@@ -101,7 +101,7 @@ class TestOutputtingCSV:
 
             previous = 1
             current = 0
-            for i in range(n+1):
+            for i in range(n + 1):
                 writer.writerow((i, current))
                 previous, current = current, current + previous
 
