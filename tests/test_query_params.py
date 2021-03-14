@@ -5,7 +5,7 @@ from uuid import UUID
 import pytest
 
 import falcon
-from falcon.errors import HTTPInvalidParam, UnsupportedError
+from falcon.errors import HTTPInvalidParam
 import falcon.testing as testing
 
 from _util import create_app  # NOQA
@@ -899,7 +899,7 @@ class TestQueryParams:
         client.app.add_route('/', resource)
         payload_dict = {'foo': 'bar'}
         query_string = 'payload={}'.format(json.dumps(payload_dict))
-        client.app.req_options.media_handlers[falcon.MEDIA_JSON].loads = lambda x: {'x': 'y'}
+        client.app.req_options.media_handlers[falcon.MEDIA_JSON]._loads = lambda x: {'x': 'y'}
         client.simulate_get(path='/', query_string=query_string)
         req = resource.captured_req
         assert req.get_param_as_json('payload') == {'x': 'y'}
@@ -986,8 +986,9 @@ class TestPostQueryParams:
         app.add_route('/', resource)
         app.req_options.auto_parse_form_urlencoded = True
 
-        with pytest.raises(UnsupportedError):
+        with pytest.raises(RuntimeError) as exc_info:
             testing.simulate_get(app, '/')
+        assert 'RequestOptions.auto_parse_form_urlencoded' in exc_info.value.args[0]
 
 
 @pytest.mark.parametrize('asgi', [True, False])

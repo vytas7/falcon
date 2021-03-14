@@ -16,8 +16,9 @@
 
 from inspect import iscoroutinefunction
 
-from falcon import MEDIA_JSON, MEDIA_XML
 from falcon import util
+from falcon.constants import MEDIA_JSON
+from falcon.constants import MEDIA_XML
 from falcon.errors import CompatibilityError
 from falcon.util.sync import _wrap_non_coroutine_unsafe
 
@@ -236,7 +237,7 @@ def default_serialize_error(req, resp, exception):
 
     if preferred is not None:
         if preferred == MEDIA_JSON:
-            handler = resp.options.media_handlers.find_by_media_type(
+            handler, _, _ = resp.options.media_handlers._resolve(
                 MEDIA_JSON, MEDIA_JSON, raise_not_found=False
             )
             resp.data = exception.to_json(handler)

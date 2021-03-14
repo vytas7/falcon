@@ -16,19 +16,20 @@
 
 import mimetypes
 
-from falcon import DEFAULT_MEDIA_TYPE
 from falcon.constants import _UNSET
+from falcon.constants import DEFAULT_MEDIA_TYPE
 from falcon.errors import HeaderNotSupported
 from falcon.media import Handlers
-from falcon.response_helpers import (
-    format_content_disposition,
-    format_etag_header,
-    format_header_value_list,
-    format_range,
-    header_property,
-    is_ascii_encodable,
-)
-from falcon.util import dt_to_http, http_cookies, structures, TimezoneGMT
+from falcon.response_helpers import format_content_disposition
+from falcon.response_helpers import format_etag_header
+from falcon.response_helpers import format_header_value_list
+from falcon.response_helpers import format_range
+from falcon.response_helpers import header_property
+from falcon.response_helpers import is_ascii_encodable
+from falcon.util import dt_to_http
+from falcon.util import http_cookies
+from falcon.util import structures
+from falcon.util import TimezoneGMT
 from falcon.util.deprecation import deprecated
 from falcon.util.uri import encode as uri_encode
 from falcon.util.uri import encode_value as uri_encode_value
@@ -267,7 +268,7 @@ class Response:
                     if not self.content_type:
                         self.content_type = self.options.default_media_type
 
-                    handler = self.options.media_handlers.find_by_media_type(
+                    handler, _, _ = self.options.media_handlers._resolve(
                         self.content_type,
                         self.options.default_media_type
                     )

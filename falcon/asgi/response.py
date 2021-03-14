@@ -15,16 +15,17 @@
 """ASGI Response class."""
 
 from asyncio.coroutines import CoroWrapper  # type: ignore
-from inspect import iscoroutine, iscoroutinefunction
+from inspect import iscoroutine
+from inspect import iscoroutinefunction
 
+from falcon import response
 from falcon.constants import _UNSET
-import falcon.response
 from falcon.util.misc import is_python_func
 
 __all__ = ['Response']
 
 
-class Response(falcon.response.Response):
+class Response(response.Response):
     """Represents an HTTP response to a client request.
 
     Note:
@@ -131,7 +132,7 @@ class Response(falcon.response.Response):
 
                         # ...or
 
-                        yield SSEvent(data=b'somethingsomething', id=some_id)
+                        yield SSEvent(data=b'something', event_id=some_id)
 
                         # Alternatively, you may yield anything that implements
                         #   a serialize() method that returns a byte string
@@ -251,6 +252,8 @@ class Response(falcon.response.Response):
             none of these attributes are set, ``None`` is returned.
         """
 
+        # NOTE(vytas): The code below is also inlined in asgi.App.__call__.
+
         text = self.text
         if text is None:
             data = self._data
@@ -262,15 +265,18 @@ class Response(falcon.response.Response):
                     if not self.content_type:
                         self.content_type = self.options.default_media_type
 
-                    handler = self.options.media_handlers.find_by_media_type(
+                    handler, serialize_sync, _ = self.options.media_handlers._resolve(
                         self.content_type,
                         self.options.default_media_type
                     )
 
-                    self._media_rendered = await handler.serialize_async(
-                        self._media,
-                        self.content_type
-                    )
+                    if serialize_sync:
+                        self._media_rendered = serialize_sync(self._media)
+                    else:
+                        self._media_rendered = await handler.serialize_async(
+                            self._media,
+                            self.content_type
+                        )
 
                 data = self._media_rendered
         else:
