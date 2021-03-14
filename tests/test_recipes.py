@@ -174,3 +174,51 @@ class TestPrettifyingJSON:
 
             result = json.dumps(media, indent=indent, sort_keys=bool(indent))
             return result.encode()
+
+    class NegotiationMiddleware:
+        def process_request(self, req, resp):
+            resp.content_type = req.accept
+
+    class QuoteResource:
+        def on_get(self, req, resp):
+            resp.media = {
+                'quote': (
+                    "I've always been more interested in "
+                    'the future than in the past.'
+                ),
+                'author': 'Grace Hopper',
+            }
+
+    def test_optional_indentation(self):
+        app = falcon.App(middleware=[self.NegotiationMiddleware()])
+        app.resp_options.media_handlers = falcon.media.Handlers({
+            falcon.MEDIA_JSON: self.CustomJSONHandler(),
+        })
+
+        app.add_route('/quote', self.QuoteResource())
+
+        resp1 = testing.simulate_get(
+            app,
+            '/quote',
+            headers={'Accept': 'application/json; indent=2'},
+        )
+        assert resp1.status_code == 200
+        assert resp1.text == (
+            '{\n'
+            '  "author": "Grace Hopper",\n'
+            '  "quote": "I\'ve always been more interested in the future than in the past."\n'
+            '}'
+        )
+
+        resp2 = testing.simulate_get(
+            app,
+            '/quote',
+            headers={'Accept': 'application/json; indent=4'},
+        )
+        assert resp2.status_code == 200
+        assert resp2.text == (
+            '{\n'
+            '    "author": "Grace Hopper",\n'
+            '    "quote": "I\'ve always been more interested in the future than in the past."\n'
+            '}'
+        )
