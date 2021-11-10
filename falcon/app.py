@@ -225,6 +225,8 @@ class App:
         '_unprepared_middleware',
         'req_options',
         'resp_options',
+
+        '_call_impl',
     )
 
     def __init__(
@@ -260,6 +262,9 @@ class App:
                     # NOTE(kgriffs): Assume the middleware kwarg references
                     #   a single middleware component.
                     middleware = [middleware, cm]
+
+        # APPSEC(vytas): Raw prototype!
+        self._call_impl = None
 
         # set middleware
         self._unprepared_middleware = []
@@ -301,6 +306,11 @@ class App:
                 status and headers on a response.
 
         """
+        if self._call_impl is not None:
+            if 'falcon.app' not in env:
+                env['falcon.app'] = self
+                return self._call_impl(env, start_response)
+
         req = self._request_type(env, options=self.req_options)
         resp = self._response_type(options=self.resp_options)
         resource = None
@@ -308,7 +318,7 @@ class App:
         params = {}
 
         dependent_mw_resp_stack = []
-        mw_req_stack, mw_rsrc_stack, mw_resp_stack = self._middleware
+        _, _, mw_req_stack, mw_rsrc_stack, mw_resp_stack = self._middleware
 
         req_succeeded = False
 
@@ -465,6 +475,18 @@ class App:
             self._unprepared_middleware,
             independent_middleware=self._independent_middleware,
         )
+
+        def wrap(app, next_):
+            def application(environ, start_response):
+                return app(environ, start_response, next_)
+
+            return application
+
+        call_impl = None
+        for process_wsgi in reversed(self._middleware[0]):
+            call_impl = wrap(process_wsgi, call_impl or self.__call__)
+
+        self._call_impl = call_impl
 
     def add_route(self, uri_template, resource, **kwargs):
         """Associate a templatized URI path with a resource.
@@ -1018,6 +1040,9 @@ class App:
             bool: ``True`` if a handler was found and called for the
             exception, ``False`` otherwise.
         """
+        for process_exception in self._middleware[1]:
+            process_exception(req, resp, ex, params)
+
         err_handler = self._find_error_handler(ex)
 
         # NOTE(caselit): Reset body, data and media before calling the handler

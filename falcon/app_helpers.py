@@ -50,6 +50,10 @@ def prepare_middleware(middleware, independent_middleware=False, asgi=False):
         tuple: A tuple of prepared middleware method tuples
     """
 
+    # APPSEC(vytas): Raw prototype!
+    generic_mw = []
+    exception_mw = []
+
     # PERF(kgriffs): do getattr calls once, in advance, so we don't
     # have to do them every time in the request path.
     request_mw = []
@@ -62,6 +66,14 @@ def prepare_middleware(middleware, independent_middleware=False, asgi=False):
         #   to distinguish the two. Otherwise, the prefix is unnecessary.
 
         if asgi:
+            process_generic = util.get_bound_method(component, 'process_asgi')
+
+            process_exception = util.get_bound_method(
+                component, 'process_exception_async'
+            ) or _wrap_non_coroutine_unsafe(
+                util.get_bound_method(component, 'process_exception')
+            )
+
             process_request = util.get_bound_method(
                 component, 'process_request_async'
             ) or _wrap_non_coroutine_unsafe(
@@ -80,7 +92,13 @@ def prepare_middleware(middleware, independent_middleware=False, asgi=False):
                 util.get_bound_method(component, 'process_response')
             )
 
-            for m in (process_request, process_resource, process_response):
+            for m in (
+                process_generic,
+                process_exception,
+                process_request,
+                process_resource,
+                process_response,
+            ):
                 # NOTE(kgriffs): iscoroutinefunction() always returns False
                 #   for cythonized functions.
                 #
@@ -98,11 +116,19 @@ def prepare_middleware(middleware, independent_middleware=False, asgi=False):
                     raise CompatibilityError(msg.format(m))
 
         else:
+            process_generic = util.get_bound_method(component, 'process_wsgi')
+            process_exception = util.get_bound_method(component, 'process_exception')
             process_request = util.get_bound_method(component, 'process_request')
             process_resource = util.get_bound_method(component, 'process_resource')
             process_response = util.get_bound_method(component, 'process_response')
 
-            for m in (process_request, process_resource, process_response):
+            for m in (
+                process_generic,
+                process_exception,
+                process_request,
+                process_resource,
+                process_response,
+            ):
                 if m and iscoroutinefunction(m):
                     msg = (
                         '{} may not implement coroutine methods and '
@@ -113,7 +139,13 @@ def prepare_middleware(middleware, independent_middleware=False, asgi=False):
                     )
                     raise CompatibilityError(msg.format(component))
 
-        if not (process_request or process_resource or process_response):
+        if not (
+            process_generic
+            or process_exception
+            or process_request
+            or process_resource
+            or process_response
+        ):
             if asgi and any(
                 hasattr(component, m)
                 for m in [
@@ -130,6 +162,12 @@ def prepare_middleware(middleware, independent_middleware=False, asgi=False):
             msg = '{0} must implement at least one middleware method'
             raise TypeError(msg.format(component))
 
+        if process_generic:
+            generic_mw.append(process_generic)
+
+        if process_exception:
+            exception_mw.append(process_exception)
+
         # NOTE: depending on whether we want to execute middleware
         # independently, we group response and request middleware either
         # together or separately.
@@ -145,7 +183,13 @@ def prepare_middleware(middleware, independent_middleware=False, asgi=False):
         if process_resource:
             resource_mw.append(process_resource)
 
-    return (tuple(request_mw), tuple(resource_mw), tuple(response_mw))
+    return (
+        tuple(generic_mw),
+        tuple(exception_mw),
+        tuple(request_mw),
+        tuple(resource_mw),
+        tuple(response_mw),
+    )
 
 
 def prepare_middleware_ws(middleware):
