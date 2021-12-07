@@ -39,10 +39,10 @@ Quick Links
 * `falconry/user for Falcon users <https://gitter.im/falconry/user>`_ @ Gitter
 * `falconry/dev for Falcon contributors <https://gitter.im/falconry/dev>`_ @ Gitter
 
-What People are Saying
-----------------------
+What People are Saying 💬
+-------------------------
 
-"Falcon is rock solid and it's fast."
+"Falcon is rock solid and it's fast." ⚡⚡⚡
 
 "We have been using Falcon as a replacement for [another framework] and
 we simply love the performance (three times faster) and code base size (easily
