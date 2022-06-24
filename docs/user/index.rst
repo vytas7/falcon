@@ -9,5 +9,6 @@ User Guide
    quickstart
    tutorial
    tutorial-asgi
+   tutorial-ws
    recipes/index
    faq
