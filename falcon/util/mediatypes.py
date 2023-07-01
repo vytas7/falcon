@@ -11,7 +11,7 @@ def _parseparam(s):
         s = s[end:]
 
 
-def parse_header_stdlib(line):
+def _parse_header_stdlib(line):
     """Parse a Content-type like header.
 
     Return the main content-type and a dictionary of options.
@@ -24,7 +24,7 @@ def parse_header_stdlib(line):
         i = p.find('=')
         if i >= 0:
             name = p[:i].strip().lower()
-            value = p[i+1:].strip()
+            value = p[i + 1 :].strip()
             if len(value) >= 2 and value[0] == value[-1] == '"':
                 value = value[1:-1]
                 value = value.replace('\\\\', '\\').replace('\\"', '"')
@@ -32,4 +32,4 @@ def parse_header_stdlib(line):
     return key, pdict
 
 
-parse_header = parse_header_stdlib
+parse_header = _parse_header_stdlib
