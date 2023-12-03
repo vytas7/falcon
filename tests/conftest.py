@@ -2,7 +2,13 @@ import os
 
 import pytest
 
+try:
+    import cython
+except ImportError:
+    cython = None
+
 import falcon
+import falcon.cyutil._cython
 
 
 _FALCON_TEST_ENV = (
@@ -16,6 +22,19 @@ _FALCON_TEST_ENV = (
 @pytest.fixture(params=[True, False], ids=['asgi', 'wsgi'])
 def asgi(request):
     return request.param
+
+
+@pytest.fixture(params=[True, False], ids=['cython-compiled', 'pure-python'])
+def cython_compiled(request, monkeypatch):
+    compiled = request.param
+
+    if cython is not None:
+        if compiled != cython.compiled:
+            pytest.skip(f'Real Cython is available; compiled: {cython.compiled}')
+    else:
+        monkeypatch.setattr(falcon.cyutil._cython, 'compiled', compiled)
+
+    return compiled
 
 
 # NOTE(kgriffs): Some modules actually run a wsgiref server, so

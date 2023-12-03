@@ -27,5 +27,10 @@ from falcon.util import mediatypes
         ),
     ],
 )
-def test_parse_header(value, expected):
+def test_parse_header(value, expected):  # , cython_compiled):
     assert mediatypes.parse_header(value) == expected == cgi.parse_header(value)
+
+
+def test_parse_simple_poc(cython_compiled):
+    result = mediatypes.parse_header('  text/plain   ')
+    assert result == ('text/plain', {})
