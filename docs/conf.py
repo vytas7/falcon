@@ -147,7 +147,7 @@ pygments_style = 'github'
 # html_theme_path = ['_themes']
 # html_theme = ''
 
-html_theme = 'alabaster'
+html_theme = 'furo'
 
 # if not on_rtd:
 #   # Use the RTD theme explicitly if it is available
@@ -163,26 +163,26 @@ html_theme = 'alabaster'
 # further.  For a list of options available for each theme, see the
 # documentation.
 html_theme_options = {
-    'page_width': '80%',
+    # 'page_width': '80%',
     'body_max_width': '100%',
-    'github_user': 'falconry',
-    'github_repo': 'falcon',
-    'github_button': False,
-    'github_banner': False,
-    'fixed_sidebar': False,
-    'show_powered_by': False,
-    'extra_nav_links': OrderedDict(
-        [
-            ('Falcon Home', 'https://falconframework.org/'),
-            ('Falcon Wiki', 'https://github.com/falconry/falcon/wiki'),
-            ('GitHub Project', 'https://github.com/falconry/falcon'),
-            ('Get Help', '/community/help.html'),
-            (
-                'Support Falcon',
-                'https://falconframework.org/#sectionSupportFalconDevelopment',
-            ),
-        ]
-    ),
+    # 'github_user': 'falconry',
+    # 'github_repo': 'falcon',
+    # 'github_button': False,
+    # 'github_banner': False,
+    # 'fixed_sidebar': False,
+    # 'show_powered_by': False,
+    # 'extra_nav_links': OrderedDict(
+    #     [
+    #         ('Falcon Home', 'https://falconframework.org/'),
+    #         ('Falcon Wiki', 'https://github.com/falconry/falcon/wiki'),
+    #         ('GitHub Project', 'https://github.com/falconry/falcon'),
+    #         ('Get Help', '/community/help.html'),
+    #         (
+    #             'Support Falcon',
+    #             'https://falconframework.org/#sectionSupportFalconDevelopment',
+    #         ),
+    #     ]
+    # ),
 }
 
 if dash_build:
@@ -201,7 +201,7 @@ if dash_build:
 
 # The name of an image file (relative to this directory) to place at the top
 # of the sidebar.
-# html_logo = '../falcon.png'
+html_logo = '../logo/logo.svg'
 
 # The name of an image file (within the static path) to use as favicon of the
 # docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32

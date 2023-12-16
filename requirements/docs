@@ -1,5 +1,6 @@
 docutils
 doc2dash
+furo
 jinja2
 markupsafe
 pygments
