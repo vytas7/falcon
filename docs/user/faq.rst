@@ -868,6 +868,21 @@ types:
     app = falcon.App(request_type=RequestWithDictContext,
                      response_type=ResponseWithDictContext)
 
+Can I use msgspec with Falcon?
+------------------------------
+
+`msgspec <https://jcristharif.com/msgspec/>`__ is a fast serialization and
+validation library, with built-in support for JSON, MessagePack, YAML, and
+TOML.
+
+You can use ``msgspec`` as :ref:`JSON handler <custom-media-json-library>` out
+of the box. Its awesome performance aside, you will also be able to assign
+instances of ``msgspec.Struct``\s to :attr:`resp.media <falcon.Response.media>`
+without any further configuration.
+
+It is also fairly straightforward to set up validation and error handling; see
+more in the following recipe: :ref:`msgspec integration <msgspec-recipe>`.
+
 Response Handling
 ~~~~~~~~~~~~~~~~~
 
@@ -931,9 +946,10 @@ setting the `default` or `object_hook` params can negatively impact the
 performance of (de)serialization.
 
 If you use an alternative JSON library, you might also look whether it provides
-support for additional data types. For instance, the popular ``orjson`` opts to
-automatically serialize :mod:`dataclasses`, :mod:`enums <enum>`,
-:class:`~datetime.datetime` objects, etc.
+support for additional data types. For instance, the popular ``orjson`` and
+:ref:`msgspec-recipe` libraries opt to automatically serialize
+:mod:`dataclasses`, :mod:`enums <enum>`, :class:`~datetime.datetime` objects,
+etc.
 
 Furthermore, different Internet media types such as YAML,
 :class:`msgpack <falcon.media.MessagePackHandler>`, etc might support more data
