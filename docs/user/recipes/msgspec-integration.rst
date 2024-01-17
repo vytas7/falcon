@@ -72,6 +72,26 @@ question. We will inject the validated object into `params`:
                 param = schema.__name__.lower()
                 params[param] = msgspec.convert(req.get_media(), schema)
 
+Here, the name of the injected parameter is simply a lowercase version of the
+schema's class name. We could instead store this name in a constant on the
+resource, or on the schema class.
+
+Error handling
+--------------
+
+Schema validation can fail, and the resulting exception would bubble up as an
+HTTP 500 error. Skimming through ``msgspec``\'s docs, we find out that this
+case is represented by ``msgspec.ValidationError``. Let us create an error
+handler that simply reraises the exception as :class:`falcon.HTTPBadRequest`:
+
+.. code:: python
+
+    def handle_validation_error(req, resp, ex, params):
+        raise falcon.HTTPBadRequest(description=str(ex))
+
+This :ref:`error hander <errors>` can now be added to our application via
+:meth:`~.falcon.App.add_error_handler`.
+
 Complete example
 ----------------
 
