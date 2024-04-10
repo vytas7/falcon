@@ -916,6 +916,14 @@ class App:
 
         self._serialize_error = serializer
 
+    def add_schema(self, schema, content_type=constants.DEFAULT_MEDIA_TYPE):
+        """Add an OpenAPI schema. Raw PoC."""
+        pass
+
+    def add_schema_file(self, filename, content_type=None):
+        """Add an OpenAPI schema from file. Convenience wrapper. PoC."""
+        pass
+
     # ------------------------------------------------------------------------
     # Helpers that require self
     # ------------------------------------------------------------------------
