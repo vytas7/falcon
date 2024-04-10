@@ -37,6 +37,8 @@ from falcon.request import RequestOptions
 from falcon.response import Response
 from falcon.response import ResponseOptions
 import falcon.status_codes as status
+from falcon.routing.schema import Schema
+from falcon.routing.routes import Routes
 from falcon.typing import ErrorHandler, ErrorSerializer, SinkPrefix
 from falcon.util import deprecation
 from falcon.util import misc
@@ -228,6 +230,8 @@ class App:
         '_unprepared_middleware',
         'req_options',
         'resp_options',
+        '_routes_info',
+        '_schema',
     )
 
     req_options: RequestOptions
@@ -275,6 +279,8 @@ class App:
 
         self._router = router or routing.DefaultRouter()
         self._router_search = self._router.find
+        self._routes_info = Routes()
+        self._schema = None
 
         self._request_type = request_type
         self._response_type = response_type
@@ -286,6 +292,7 @@ class App:
         self.resp_options = ResponseOptions()
 
         self.req_options.default_media_type = media_type
+        self.req_options.routes_info = self._routes_info
         self.resp_options.default_media_type = media_type
 
         # NOTE(kgriffs): Add default error handlers
@@ -598,6 +605,8 @@ class App:
             raise ValueError("uri_template may not contain '//'")
 
         self._router.add_route(uri_template, resource, **kwargs)
+
+        self._routes_info.add_route(uri_template, resource, kwargs)
 
     def add_static_route(
         self,
@@ -918,7 +927,11 @@ class App:
 
     def add_schema(self, schema, content_type=constants.DEFAULT_MEDIA_TYPE):
         """Add an OpenAPI schema. Raw PoC."""
-        pass
+        # TODO: Parse if bytes/stream
+        # TODO: Afford adding more secondary linked def schemas
+        self._schema = Schema.parse(schema)
+
+        self._routes_info.set_schema(self._schema)
 
     def add_schema_file(self, filename, content_type=None):
         """Add an OpenAPI schema from file. Convenience wrapper. PoC."""

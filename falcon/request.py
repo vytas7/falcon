@@ -1945,6 +1945,17 @@ class Request:
 
         self._wsgierrors.write(log_line + message + '\n')
 
+    @property
+    def route(self):
+        return self.options.routes_info.get_route(self.uri_template)
+
+    @property
+    def schema(self):
+        route = self.route
+        if route and route.schema:
+            return route.schema.get(self.method.lower())
+        return None
+
     # ------------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------------
@@ -2091,6 +2102,7 @@ class RequestOptions:
     strip_url_path_trailing_slash: bool
     default_media_type: str
     media_handlers: Handlers
+    routes_info: object
 
     __slots__ = (
         'keep_blank_qs_values',
@@ -2099,6 +2111,7 @@ class RequestOptions:
         'strip_url_path_trailing_slash',
         'default_media_type',
         'media_handlers',
+        'routes_info',
     )
 
     def __init__(self):
@@ -2108,3 +2121,4 @@ class RequestOptions:
         self.strip_url_path_trailing_slash = False
         self.default_media_type = DEFAULT_MEDIA_TYPE
         self.media_handlers = Handlers()
+        self.routes_info = None
