@@ -211,7 +211,10 @@ class Response(response.Response):
                 #   None is ambiguous (the media handler might return None).
                 if self._media_rendered is _UNSET:
                     if not self.content_type:
-                        self.content_type = self.options.default_media_type
+                        if self.options.negotiate_media_type:
+                            pass
+                        else:
+                            self.content_type = self.options.default_media_type
 
                     handler, serialize_sync, _ = self.options.media_handlers._resolve(
                         self.content_type, self.options.default_media_type

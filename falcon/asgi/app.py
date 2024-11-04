@@ -559,7 +559,10 @@ class App(falcon.app.App):
                         if resp._media_rendered is _UNSET:
                             opt = resp.options
                             if not resp.content_type:
-                                resp.content_type = opt.default_media_type
+                                if self.options.negotiate_media_type:
+                                    pass
+                                else:
+                                    resp.content_type = opt.default_media_type
 
                             handler, serialize_sync, _ = opt.media_handlers._resolve(
                                 resp.content_type, opt.default_media_type

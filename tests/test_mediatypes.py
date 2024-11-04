@@ -281,3 +281,27 @@ def test_invalid_media_range(media_range):
 @pytest.mark.parametrize('media_types', [(), [], {}, _generate_strings(())])
 def test_empty_media_types(accept, media_types):
     assert mediatypes.best_match(media_types, accept) == ''
+
+
+@pytest.mark.parametrize(
+    'media_types,accept,expected',
+    [
+        (
+            ('application/json', 'text/plain'),
+            'application/xml, text/*; q=0.7, */*; q=0.3',
+            'text/plain',
+        ),
+        (
+            ('falcon/peregrine', 'falcon/peregrine; load=unladen'),
+            'falcon/*, falcon/peregrine; load=unladen; q=0.9, /*; q=0.7, */*; q=0.3',
+            'falcon/peregrine; load=unladen',
+        ),
+        (
+            ('application/yaml', 'application/json'),
+            'application/xml, text/*; q=0.7, */*; q=0.3',
+            'application/yaml',
+        ),
+    ],
+)
+def test_negotiation(media_types, accept, expected):
+    assert mediatypes.negotiate(media_types, accept) == expected

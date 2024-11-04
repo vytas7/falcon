@@ -133,6 +133,10 @@ class _MediaType:
     def parse(cls, media_type: str) -> _MediaType:
         return cls(*_parse_media_type_header(media_type))
 
+    def dumps(self) -> str:
+        params_str = ''.join(f'; {key}={value}' for key, value in self.params.items())
+        return f'{self.main_type}/{self.subtype}{params_str}'
+
 
 @dataclasses.dataclass
 class _MediaRange:
@@ -215,6 +219,14 @@ class _MediaRange:
 
         return (main_matches, sub_matches, exact_match, len(matching), self.quality)
 
+    def negotiate_media_type(self, media_type: _MediaType) -> _MediaType:
+        if isinstance(media_type, str):
+            media_type = _parse_media_type(media_type)
+        main_type = media_type.main_type if self.main_type == '*' else self.main_type
+        subtype = media_type.subtype if self.subtype == '*' else self.subtype
+        result = _MediaType(main_type, subtype, self.params)
+        return result.dumps()
+
 
 # PERF(vytas): It is possible to cache a classmethod too, but the invocation is
 #   less efficient, especially in the case of a cache hit.
@@ -285,11 +297,26 @@ def quality(media_type: str, header: str) -> float:
     .. versionadded:: 4.0
     """
     parsed_media_type = _parse_media_type(media_type)
+    parsed_media_ranges = _parse_media_ranges(header)
     most_specific = max(
         media_range.match_score(parsed_media_type)
-        for media_range in _parse_media_ranges(header)
+        for media_range in parsed_media_ranges
     )
     return most_specific[-1]
+
+
+def _quality_ext(media_type: str, header: str) -> _MediaRange:
+    """Return the most specific media range matching media_type."""
+    parsed_media_type = _parse_media_type(media_type)
+    parsed_media_ranges = _parse_media_ranges(header)
+    most_specific, media_range = max(
+        (
+            (media_range.match_score(parsed_media_type), media_range)
+            for media_range in parsed_media_ranges
+        ),
+        key=lambda mr_score: mr_score[0],
+    )
+    return most_specific[-1], media_range
 
 
 def best_match(media_types: Iterable[str], header: str) -> str:
@@ -317,6 +344,47 @@ def best_match(media_types: Iterable[str], header: str) -> str:
         )
         if best_quality > 0.0:
             return matching
+    except errors.InvalidMediaType:
+        # NOTE(vytas): Do not swallow instances of InvalidMediaType
+        #   (it a subclass of ValueError).
+        raise
+    except ValueError:
+        # NOTE(vytas): Barring unknown bugs, we only expect unhandled
+        #   ValueErrors from supplying an empty media_types value.
+        pass
+
+    return ''
+
+
+# TODO(vytas): Update docstring, WiP.
+def negotiate(media_types: Iterable[str], header: str) -> str:
+    """Choose media type with the highest :func:`quality` from a list of candidates.
+
+    Args:
+        media_types: An iterable over one or more Internet media types
+            to match against the provided header value.
+        header: The value of a header that conforms to the format of the
+            HTTP ``Accept`` header.
+
+    Returns:
+        Best match from the supported candidates, or an empty string if the
+        provided header value does not match any of the given types.
+
+    .. versionadded:: 4.1
+    """
+    # PERF(vytas): Using the default parameter, i.e., max(..., default='', 0.0)
+    #   would be much nicer than EAFP, but for some reason it is quite slow
+    #   regardless of whether media_types is empty or not.
+    try:
+        matching, (best_quality, media_range) = max(
+            (
+                (media_type, _quality_ext(media_type, header))
+                for media_type in media_types
+            ),
+            key=lambda mt_quality: mt_quality[1][0],
+        )
+        if best_quality > 0.0:
+            return media_range.negotiate_media_type(matching)
     except errors.InvalidMediaType:
         # NOTE(vytas): Do not swallow instances of InvalidMediaType
         #   (it a subclass of ValueError).

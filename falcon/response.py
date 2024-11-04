@@ -294,7 +294,10 @@ class Response:
                 #   None is ambiguous (the media handler might return None).
                 if self._media_rendered is _UNSET:
                     if not self.content_type:
-                        self.content_type = self.options.default_media_type
+                        if self.options.negotiate_media_type:
+                            pass
+                        else:
+                            self.content_type = self.options.default_media_type
 
                     handler, _, _ = self.options.media_handlers._resolve(
                         self.content_type, self.options.default_media_type
@@ -1408,6 +1411,14 @@ class ResponseOptions:
     Default handlers are provided for the ``application/json``,
     ``application/x-www-form-urlencoded`` and ``multipart/form-data`` media types.
     """
+    negotiate_media_type: bool
+    """Set to ``True`` to enable automatic negotiation of the response media
+    type (default ``False``).
+
+    The response content type is negotiated by choosing the most specific match
+    between the media types registered in :attr:`media_handlers`, and the
+    request's ``Accept`` header.
+    """
     static_media_types: Dict[str, str]
     """A mapping of dot-prefixed file extensions to Internet media types (RFC 2046).
 
@@ -1437,6 +1448,7 @@ class ResponseOptions:
         'secure_cookies_by_default',
         'default_media_type',
         'media_handlers',
+        'negotiate_media_type',
         'static_media_types',
         'xml_error_serialization',
     )
@@ -1445,6 +1457,7 @@ class ResponseOptions:
         self.secure_cookies_by_default = True
         self.default_media_type = DEFAULT_MEDIA_TYPE
         self.media_handlers = Handlers()
+        self.negotiate_media_type = False
         self.xml_error_serialization = True
 
         if not mimetypes.inited:
