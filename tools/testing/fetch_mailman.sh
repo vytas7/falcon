@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -e
+
 FALCON_ROOT=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../.." &> /dev/null && pwd )
 MAILMAN_PATH=$FALCON_ROOT/.ecosystem/mailman
 
@@ -19,14 +21,11 @@ cd $MAILMAN_PATH
 # git checkout tags/$MAILMAN_VERSION
 
 # NOTE(vytas): Patch tox.ini to introduce a new Falcon environment.
-# TODO(vytas): Remove the shim pinning importlib-resources once
-#   https://gitlab.com/mailman/mailman/-/merge_requests/1130 is merged upstream.
 cat <<EOT >> tox.ini
 
 [testenv:falcon-nocov]
-basepython = python3.8
+basepython = python3.12
 commands_pre =
-    pip install "importlib-resources < 6.0"
     pip uninstall -y falcon
     pip install $FALCON_ROOT
 EOT
@@ -36,3 +35,9 @@ EOT
 #   (but it works on other platforms).
 sed -i s/test_uheader_multiline/skip_test_uheader_multiline/ \
     src/mailman/handlers/tests/test_cook_headers.py
+
+# NOTE(vytas): I cannot understand how this passes in the upstream's CI...
+# TODO(vytas): Remove the below patch when the issue is resolved upstream:
+#   https://gitlab.com/mailman/mailman/-/issues/1203
+sed -i "s/>>>/TODO: restore doctest  #/g" \
+    src/mailman/commands/docs/digests.rst

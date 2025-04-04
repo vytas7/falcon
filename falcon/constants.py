@@ -1,7 +1,29 @@
+from enum import auto
 from enum import Enum
 import os
 import sys
 
+__all__ = (
+    'HTTP_METHODS',
+    'WEBDAV_METHODS',
+    'COMBINED_METHODS',
+    'DEFAULT_MEDIA_TYPE',
+    'MEDIA_BMP',
+    'MEDIA_GIF',
+    'MEDIA_HTML',
+    'MEDIA_JPEG',
+    'MEDIA_JS',
+    'MEDIA_JSON',
+    'MEDIA_MSGPACK',
+    'MEDIA_MULTIPART',
+    'MEDIA_PNG',
+    'MEDIA_TEXT',
+    'MEDIA_URLENCODED',
+    'MEDIA_XML',
+    'MEDIA_YAML',
+    'SINGLETON_HEADERS',
+    'WebSocketPayloadType',
+)
 
 PYPY = sys.implementation.name == 'pypy'
 """Evaluates to ``True`` when the current Python implementation is PyPy."""
@@ -9,12 +31,12 @@ PYPY = sys.implementation.name == 'pypy'
 PYTHON_VERSION = tuple(sys.version_info[:3])
 """Python version information triplet: (major, minor, micro)."""
 
-FALCON_SUPPORTED = PYTHON_VERSION >= (3, 7, 0)
+FALCON_SUPPORTED = PYTHON_VERSION >= (3, 8, 0)
 """Whether this version of Falcon supports the current Python version."""
 
 if not FALCON_SUPPORTED:  # pragma: nocover
     raise ImportError(
-        'Falcon requires Python 3.7+. '
+        'Falcon requires Python 3.8+. '
         '(Recent Pip should automatically pick a suitable Falcon version.)'
     )
 
@@ -82,6 +104,8 @@ MEDIA_JSON = 'application/json'
 # but the use of the 'x-' prefix is discouraged by RFC 6838.
 MEDIA_MSGPACK = 'application/msgpack'
 
+MEDIA_PARQUET = 'application/vnd.apache.parquet'
+
 MEDIA_MULTIPART = 'multipart/form-data'
 
 MEDIA_URLENCODED = 'application/x-www-form-urlencoded'
@@ -115,6 +139,11 @@ MEDIA_JS = 'text/javascript'
 MEDIA_HTML = 'text/html; charset=utf-8'
 MEDIA_TEXT = 'text/plain; charset=utf-8'
 
+# NOTE(kemingy): According to RFC 4180, common usage of CSV is US-ASCII,
+# but other charsets can also be used. We use UTF-8 to make it compatible
+# with most modern systems.
+MEDIA_CSV = 'text/csv; charset=utf-8'
+
 MEDIA_JPEG = 'image/jpeg'
 MEDIA_PNG = 'image/png'
 MEDIA_GIF = 'image/gif'
@@ -145,6 +174,7 @@ _DEFAULT_STATIC_MEDIA_TYPES = tuple(
     (ext, media_type.split(';', 1)[0])
     for ext, media_type in (
         ('.bmp', MEDIA_BMP),
+        ('.csv', MEDIA_CSV),
         ('.gif', MEDIA_GIF),
         ('.htm', MEDIA_HTML),
         ('.html', MEDIA_HTML),
@@ -153,6 +183,7 @@ _DEFAULT_STATIC_MEDIA_TYPES = tuple(
         ('.js', MEDIA_JS),
         ('.json', MEDIA_JSON),
         ('.mjs', MEDIA_JS),
+        ('.parquet', MEDIA_PARQUET),
         ('.png', MEDIA_PNG),
         ('.txt', MEDIA_TEXT),
         ('.xml', MEDIA_XML),
@@ -161,9 +192,9 @@ _DEFAULT_STATIC_MEDIA_TYPES = tuple(
     )
 )
 
-# NOTE(kgriffs): Special singleton to be used internally whenever using
-#   None would be ambiguous.
-_UNSET = object()
 
-WebSocketPayloadType = Enum('WebSocketPayloadType', 'TEXT BINARY')
-"""Enum representing the two possible WebSocket payload types."""
+class WebSocketPayloadType(Enum):
+    """Enum representing the two possible WebSocket payload types."""
+
+    TEXT = auto()
+    BINARY = auto()

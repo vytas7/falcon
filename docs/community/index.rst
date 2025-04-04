@@ -5,5 +5,6 @@ Community Guide
    :maxdepth: 1
 
    help
-   contribute
+   contributing
+   packaging
    ../user/faq

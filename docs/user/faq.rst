@@ -3,8 +3,6 @@
 FAQ
 ===
 
-.. contents:: :local:
-
 Design Philosophy
 ~~~~~~~~~~~~~~~~~
 
@@ -97,6 +95,27 @@ other types of hooks, such as custom error handlers, are likewise shared.
 Therefore, as long as you implement these classes and callables in a
 thread-safe manner, and ensure that any third-party libraries used by your
 app are also thread-safe, your WSGI app as a whole will be thread-safe.
+
+.. _faq_free_threading:
+
+Can I run Falcon on free-threaded CPython?
+------------------------------------------
+
+At the time of this writing, Falcon has not been extensively evaluated without
+the GIL yet.
+
+We load-tested the WSGI flavor of the framework via
+:class:`~wsgiref.simple_server.WSGIServer` +
+:class:`~socketserver.ThreadingMixIn` on
+`free-threaded CPython 3.13.0
+<https://docs.python.org/3.13/whatsnew/3.13.html#free-threaded-cpython>`__
+(under ``PYTHON_GIL=0``), and observed no issues that would point toward
+Falcon's reliance on the GIL. Thus, we would like to think that Falcon is still
+:ref:`thread-safe <faq_thread_safety>` even in free-threaded execution,
+but it is too early to provide a definite answer.
+
+If you experimented with free-threading of Falcon or other Python web services,
+please :ref:`share your experience <chat>`!
 
 Does Falcon support asyncio?
 ------------------------------
@@ -668,9 +687,10 @@ The `stream` of a body part is a file-like object implementing the ``read()``
 method, making it compatible with ``boto3``\'s
 `upload_fileobj <https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.upload_fileobj>`_:
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: WSGI
+    .. tab-item:: WSGI
+        :sync: wsgi
 
         .. code:: python
 
@@ -684,7 +704,8 @@ method, making it compatible with ``boto3``\'s
                 if part.name == 'myfile':
                     s3.upload_fileobj(part.stream, 'mybucket', 'mykey')
 
-    .. group-tab:: ASGI
+    .. tab-item:: ASGI
+        :sync: asgi
 
         .. code:: python
 
@@ -885,6 +906,8 @@ more in the following recipe: :ref:`msgspec integration <msgspec-recipe>`.
 
 Response Handling
 ~~~~~~~~~~~~~~~~~
+
+.. _resp_media_data_text:
 
 When would I use media, data, text, and stream?
 -----------------------------------------------
@@ -1342,3 +1365,45 @@ Alternatively, you can set the Cookie header directly as demonstrated in this ve
 To include multiple values, simply use ``"; "`` to separate each name-value
 pair. For example, if you were to pass ``{'Cookie': 'xxx=yyy; hello=world'}``,
 you would get ``{'cookies': {'xxx': 'yyy', 'hello': 'world'}}``.
+
+Why do I see no error tracebacks in my ASGI application?
+--------------------------------------------------------
+
+When using Falcon with an ASGI server like Uvicorn,
+you might notice that server errors do not include any traceback by default.
+This behavior differs from WSGI, where the PEP-3333 specification defines the
+`wsgi.errors <https://peps.python.org/pep-3333/#environ-variables>`__ stream
+(which Falcon utilizes to log unhandled
+:class:`internal server errors <falcon.HTTPInternalServerError>`).
+
+Since there is no standardized way to log errors back to the ASGI server,
+the framework simply opts to log them using the ``falcon``
+:class:`logger <logging.Logger>`.
+
+The easiest way to get started is configuring the root logger via
+:func:`logging.basicConfig`:
+
+.. code:: python
+
+    import logging
+
+    import falcon
+    import falcon.asgi
+
+    logging.basicConfig(
+        format="%(asctime)s [%(levelname)s] %(message)s", level=logging.INFO)
+
+
+    class FaultyResource:
+        async def on_get(self, req, resp):
+            raise ValueError('foo')
+
+
+    app = falcon.asgi.App()
+    app.add_route('/things', FaultyResource())
+
+By adding the above logging configuration, you should now see tracebacks logged
+to :any:`stderr <sys.stderr>` when accessing ``/things``.
+
+For additional details on this topic,
+please refer to :ref:`debugging_asgi_applications`.

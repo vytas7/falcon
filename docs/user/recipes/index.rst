@@ -8,6 +8,7 @@ Recipes
    msgspec-integration
    multipart-mixed
    output-csv
+   plain-text-handler
    pretty-json
    raw-url-path
    request-id

@@ -29,11 +29,11 @@ from falcon.util.deprecation import AttributeRemovedError
 from falcon.util.deprecation import deprecated
 from falcon.util.deprecation import deprecated_args
 from falcon.util.deprecation import DeprecatedWarning
+from falcon.util.mediatypes import parse_header
 from falcon.util.misc import code_to_http_status
 from falcon.util.misc import dt_to_http
 from falcon.util.misc import get_argnames
 from falcon.util.misc import get_bound_method
-from falcon.util.misc import get_http_status
 from falcon.util.misc import http_date_to_dt
 from falcon.util.misc import http_now
 from falcon.util.misc import http_status_to_code
@@ -52,14 +52,15 @@ from falcon.util.sync import wrap_sync_to_async
 from falcon.util.sync import wrap_sync_to_async_unsafe
 from falcon.util.time import TimezoneGMT
 
-
-# NOTE(kgriffs): Backport support for the new 'SameSite' attribute
-#   for Python versions prior to 3.8. We do it this way because
-#   SimpleCookie does not give us a simple way to specify our own
-#   subclass of Morsel.
-_reserved_cookie_attrs = http_cookies.Morsel._reserved  # type: ignore
-if 'samesite' not in _reserved_cookie_attrs:  # pragma: no cover
-    _reserved_cookie_attrs['samesite'] = 'SameSite'  # type: ignore
+# NOTE(kgriffs, m-mueller): Monkey-patch support for the new 'Partitioned'
+#   attribute that was added in Python 3.14 (alpha 5).
+#   We do it this way because SimpleCookie does not give us a simple way to
+#   specify our own subclass of Morsel.
+_reserved_cookie_attrs = http_cookies.Morsel._reserved  # type: ignore[attr-defined]
+if 'partitioned' not in _reserved_cookie_attrs:  # pragma: no cover
+    _reserved_cookie_attrs['partitioned'] = 'Partitioned'
+    # NOTE(vytas): Partitioned is a boolean flag, similar to HttpOnly and Secure.
+    http_cookies.Morsel._flags.add('partitioned')  # type: ignore[attr-defined]
 
 
 IS_64_BITS = sys.maxsize > 2**32
@@ -76,18 +77,3 @@ except ImportError:
 BufferedReader = (
     (_CyBufferedReader or _PyBufferedReader) if IS_64_BITS else _PyBufferedReader
 )
-
-
-def __getattr__(name: str) -> ModuleType:
-    if name == 'json':
-        import warnings
-        import json  # NOQA
-
-        warnings.warn(
-            'Importing json from "falcon.util" is deprecated.', DeprecatedWarning
-        )
-        return json
-
-    # fallback to the default implementation
-    mod = sys.modules[__name__]
-    return ModuleType.__getattr__(mod, name)

@@ -11,15 +11,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """HTTPError exception class."""
 
-from collections import OrderedDict
+from __future__ import annotations
+
+from typing import MutableMapping, Optional, Type, TYPE_CHECKING, Union
 import xml.etree.ElementTree as et
 
 from falcon.constants import MEDIA_JSON
-from falcon.util import code_to_http_status, http_status_to_code, uri
-from falcon.util.deprecation import deprecated_args
+from falcon.util import deprecation
+from falcon.util import misc
+from falcon.util import uri
+
+if TYPE_CHECKING:
+    from falcon._typing import HeaderArg
+    from falcon._typing import Link
+    from falcon._typing import ResponseStatus
+    from falcon.media import BaseHandler
 
 
 class HTTPError(Exception):
@@ -36,14 +44,10 @@ class HTTPError(Exception):
 
     To customize what data is passed to the serializer, subclass
     ``HTTPError`` and override the ``to_dict()`` method (``to_json()``
-    is implemented via ``to_dict()``). To also support XML, override
-    the ``to_xml()`` method.
+    is implemented via ``to_dict()``).
 
-    Note:
-        ``status`` is the only positional argument allowed, the other
-        arguments should be used as keyword only. Using them as positional
-        arguments will raise a deprecation warning and will result in an
-        error in a future version of falcon.
+    `status` is the only positional argument allowed,
+    the other arguments are defined as keyword-only.
 
     Args:
         status (Union[str,int]): HTTP status code or line (e.g.,
@@ -81,21 +85,6 @@ class HTTPError(Exception):
         code (int): An internal code that customers can reference in their
             support request or to help them when searching for knowledge
             base articles related to this error (default ``None``).
-
-    Attributes:
-        status (Union[str,int]): HTTP status code or line (e.g., ``'200 OK'``).
-            This may be set to a member of :class:`http.HTTPStatus`, an HTTP
-            status line string or byte string (e.g., ``'200 OK'``), or an
-            ``int``.
-        status_code (int): HTTP status code normalized from the ``status``
-            argument passed to the initializer.
-        title (str): Error title to send to the client.
-        description (str): Description of the error to send to the client.
-        headers (dict): Extra headers to add to the response.
-        link (str): An href that the client can provide to the user for
-            getting help.
-        code (int): An internal application code that a user can reference when
-            requesting support for the error.
     """
 
     __slots__ = (
@@ -107,16 +96,38 @@ class HTTPError(Exception):
         'code',
     )
 
-    @deprecated_args(allowed_positional=1)
+    status: ResponseStatus
+    """HTTP status code or line (e.g., ``'200 OK'``).
+
+    This may be set to a member of :class:`http.HTTPStatus`, an HTTP
+    status line string or byte string (e.g., ``'200 OK'``), or an ``int``.
+    """
+    title: str
+    """Error title to send to the client.
+
+    Derived from the ``status`` if not provided.
+    """
+    description: Optional[str]
+    """Description of the error to send to the client."""
+    headers: Optional[HeaderArg]
+    """Extra headers to add to the response."""
+    link: Optional[Link]
+    """An href that the client can provide to the user for getting help."""
+    code: Optional[int]
+    """An internal application code that a user can reference when requesting
+    support for the error.
+    """
+
     def __init__(
         self,
-        status,
-        title=None,
-        description=None,
-        headers=None,
-        href=None,
-        href_text=None,
-        code=None,
+        status: ResponseStatus,
+        *,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        headers: Optional[HeaderArg] = None,
+        href: Optional[str] = None,
+        href_text: Optional[str] = None,
+        code: Optional[int] = None,
     ):
         self.status = status
 
@@ -124,30 +135,36 @@ class HTTPError(Exception):
         #   we'll probably switch over to making everything code-based to more
         #   easily support HTTP/2. When that happens, should we continue to
         #   include the reason phrase in the title?
-        self.title = title or code_to_http_status(status)
+        self.title = title or misc.code_to_http_status(status)
 
         self.description = description
         self.headers = headers
         self.code = code
 
         if href:
-            link = self.link = OrderedDict()
-            link['text'] = href_text or 'Documentation related to this error'
-            link['href'] = uri.encode(href)
-            link['rel'] = 'help'
+            self.link = {
+                'text': href_text or 'Documentation related to this error',
+                'href': uri.encode(href),
+                'rel': 'help',
+            }
         else:
             self.link = None
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return '<%s: %s>' % (self.__class__.__name__, self.status)
 
     __str__ = __repr__
 
     @property
     def status_code(self) -> int:
-        return http_status_to_code(self.status)
+        """HTTP status code normalized from the ``status`` argument passed
+        to the initializer.
+        """  # noqa: D205
+        return misc.http_status_to_code(self.status)
 
-    def to_dict(self, obj_type=dict):
+    def to_dict(
+        self, obj_type: Type[MutableMapping[str, Union[str, int, None, Link]]] = dict
+    ) -> MutableMapping[str, Union[str, int, None, Link]]:
         """Return a basic dictionary representing the error.
 
         This method can be useful when serializing the error to hash-like
@@ -178,7 +195,7 @@ class HTTPError(Exception):
 
         return obj
 
-    def to_json(self, handler=None):
+    def to_json(self, handler: Optional[BaseHandler] = None) -> bytes:
         """Return a JSON representation of the error.
 
         Args:
@@ -191,18 +208,14 @@ class HTTPError(Exception):
 
         """
 
-        obj = self.to_dict(OrderedDict)
+        obj = self.to_dict()
         if handler is None:
             handler = _DEFAULT_JSON_HANDLER
+        # NOTE: the json handler requires the sync serialize interface
         return handler.serialize(obj, MEDIA_JSON)
 
-    def to_xml(self):
-        """Return an XML-encoded representation of the error.
-
-        Returns:
-            bytes: An XML document for the error.
-
-        """
+    def _to_xml(self) -> bytes:
+        """Return an XML-encoded representation of the error."""
 
         error_element = et.Element('error')
 
@@ -224,7 +237,26 @@ class HTTPError(Exception):
             error_element, encoding='utf-8'
         )
 
+    @deprecation.deprecated(
+        'The internal error serialization to XML is deprecated. '
+        'Please serialize the output of to_dict() to XML instead.'
+    )
+    def to_xml(self) -> bytes:
+        """Return an XML-encoded representation of the error.
+
+        Returns:
+            bytes: An XML document for the error.
+
+        .. deprecated:: 4.0
+            Automatic error serialization to XML is deprecated.
+            Please serialize the output of :meth:`to_dict` to XML instead.
+        """
+        return self._to_xml()
+
 
 # NOTE: initialized in falcon.media.json, that is always imported since Request/Response
 # are imported by falcon init.
-_DEFAULT_JSON_HANDLER = None
+if TYPE_CHECKING:
+    _DEFAULT_JSON_HANDLER: BaseHandler
+else:
+    _DEFAULT_JSON_HANDLER = None
