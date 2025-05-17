@@ -1,4 +1,4 @@
-# Copyright 2021-2024 by Vytautas Liuolia.
+# Copyright 2021-2025 by Vytautas Liuolia.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -92,12 +92,14 @@ SinkPrefix = Union[str, Pattern[str]]
 
 
 class SinkCallable(Protocol):
-    def __call__(self, req: Request, resp: Response, **kwargs: str) -> None: ...
+    def __call__(
+        self, req: Request, resp: Response, **kwargs: Optional[str]
+    ) -> None: ...
 
 
 class AsgiSinkCallable(Protocol):
     async def __call__(
-        self, req: AsgiRequest, resp: AsgiResponse, **kwargs: str
+        self, req: AsgiRequest, resp: AsgiResponse, **kwargs: Optional[str]
     ) -> None: ...
 
 

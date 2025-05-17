@@ -52,17 +52,15 @@ from falcon.util.sync import wrap_sync_to_async
 from falcon.util.sync import wrap_sync_to_async_unsafe
 from falcon.util.time import TimezoneGMT
 
-# NOTE(kgriffs): Backport support for the new 'SameSite' attribute
-#   for Python versions prior to 3.8. We do it this way because
-#   SimpleCookie does not give us a simple way to specify our own
-#   subclass of Morsel.
-_reserved_cookie_attrs = http_cookies.Morsel._reserved  # type: ignore
-if 'samesite' not in _reserved_cookie_attrs:  # pragma: no cover
-    _reserved_cookie_attrs['samesite'] = 'SameSite'
-# NOTE(m-mueller): Same for the 'partitioned' attribute that will
-#   probably be added in Python 3.13 or 3.14.
+# NOTE(kgriffs, m-mueller): Monkey-patch support for the new 'Partitioned'
+#   attribute that was added in Python 3.14 (alpha 5).
+#   We do it this way because SimpleCookie does not give us a simple way to
+#   specify our own subclass of Morsel.
+_reserved_cookie_attrs = http_cookies.Morsel._reserved  # type: ignore[attr-defined]
 if 'partitioned' not in _reserved_cookie_attrs:  # pragma: no cover
     _reserved_cookie_attrs['partitioned'] = 'Partitioned'
+    # NOTE(vytas): Partitioned is a boolean flag, similar to HttpOnly and Secure.
+    http_cookies.Morsel._flags.add('partitioned')  # type: ignore[attr-defined]
 
 
 IS_64_BITS = sys.maxsize > 2**32

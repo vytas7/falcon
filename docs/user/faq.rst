@@ -828,6 +828,22 @@ via :meth:`~falcon.Request.get_param`, or use the
 :meth:`~falcon.Request.get_param_as_json` convenience method as
 demonstrated above.
 
+Can I use msgspec with Falcon?
+------------------------------
+
+`msgspec <https://jcristharif.com/msgspec/>`__ is a fast serialization and
+validation library, with built-in support for JSON, MessagePack, YAML, and
+TOML.
+
+You can use ``msgspec`` as :ref:`JSON handler <custom-media-json-library>` out
+of the box. Its awesome performance aside, you will also be able to assign
+instances of ``msgspec.Struct`` to :attr:`resp.media <falcon.Response.media>`
+without any additional configuration.
+
+It is also fairly straightforward to set up
+request media validation and error handling; see more in the following recipe:
+:ref:`msgspec integration <msgspec_recipe>`.
+
 How can I handle forward slashes within a route template field?
 ---------------------------------------------------------------
 
@@ -892,6 +908,8 @@ types:
 Response Handling
 ~~~~~~~~~~~~~~~~~
 
+.. _resp_media_data_text:
+
 When would I use media, data, text, and stream?
 -----------------------------------------------
 
@@ -952,9 +970,10 @@ setting the `default` or `object_hook` params can negatively impact the
 performance of (de)serialization.
 
 If you use an alternative JSON library, you might also look whether it provides
-support for additional data types. For instance, the popular ``orjson`` opts to
-automatically serialize :mod:`dataclasses`, :mod:`enums <enum>`,
-:class:`~datetime.datetime` objects, etc.
+support for additional data types. For instance, the popular ``orjson`` and
+:ref:`msgspec <msgspec_recipe>` libraries opt to automatically serialize
+:mod:`dataclasses`, :mod:`enums <enum>`, :class:`~datetime.datetime` objects,
+etc.
 
 Furthermore, different Internet media types such as YAML,
 :class:`msgpack <falcon.media.MessagePackHandler>`, etc might support more data
@@ -1347,3 +1366,45 @@ Alternatively, you can set the Cookie header directly as demonstrated in this ve
 To include multiple values, simply use ``"; "`` to separate each name-value
 pair. For example, if you were to pass ``{'Cookie': 'xxx=yyy; hello=world'}``,
 you would get ``{'cookies': {'xxx': 'yyy', 'hello': 'world'}}``.
+
+Why do I see no error tracebacks in my ASGI application?
+--------------------------------------------------------
+
+When using Falcon with an ASGI server like Uvicorn,
+you might notice that server errors do not include any traceback by default.
+This behavior differs from WSGI, where the PEP-3333 specification defines the
+`wsgi.errors <https://peps.python.org/pep-3333/#environ-variables>`__ stream
+(which Falcon utilizes to log unhandled
+:class:`internal server errors <falcon.HTTPInternalServerError>`).
+
+Since there is no standardized way to log errors back to the ASGI server,
+the framework simply opts to log them using the ``falcon``
+:class:`logger <logging.Logger>`.
+
+The easiest way to get started is configuring the root logger via
+:func:`logging.basicConfig`:
+
+.. code:: python
+
+    import logging
+
+    import falcon
+    import falcon.asgi
+
+    logging.basicConfig(
+        format="%(asctime)s [%(levelname)s] %(message)s", level=logging.INFO)
+
+
+    class FaultyResource:
+        async def on_get(self, req, resp):
+            raise ValueError('foo')
+
+
+    app = falcon.asgi.App()
+    app.add_route('/things', FaultyResource())
+
+By adding the above logging configuration, you should now see tracebacks logged
+to :any:`stderr <sys.stderr>` when accessing ``/things``.
+
+For additional details on this topic,
+please refer to :ref:`debugging_asgi_applications`.
