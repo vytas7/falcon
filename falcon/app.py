@@ -255,6 +255,7 @@ class App:
         '_sink_before_static_route',
         '_sinks',
         '_static_routes',
+        '_teardown_middleware',
         '_unprepared_middleware',
         'req_options',
         'resp_options',
@@ -465,7 +466,7 @@ class App:
         length: Optional[int]
 
         try:
-            body, length = self._get_body(resp, env.get('wsgi.file_wrapper'))
+            body, length = self._get_body(req, resp, env.get('wsgi.file_wrapper'))
         except Exception as ex:
             # PERF(vytas): Move this initialization into the except branch, the
             #   variables are otherwise assigned from self._get_body().
@@ -580,6 +581,14 @@ class App:
             self._unprepared_middleware,
             independent_middleware=self._independent_middleware,
         )
+
+        # TODO(vytas): Here be dragons -- raw prototyping!!!
+        teardown_middleware = []
+        for component in self._unprepared_middleware:
+            process_teardown = getattr(component, 'process_teardown', None)
+            if process_teardown is not None:
+                teardown_middleware.insert(0, process_teardown)
+        self._teardown_middleware = tuple(teardown_middleware)
 
     def add_route(self, uri_template: str, resource: object, **kwargs: Any) -> None:
         """Associate a templatized URI path with a resource.
@@ -1213,6 +1222,7 @@ class App:
     # requests.
     def _get_body(
         self,
+        req: Request,
         resp: Response,
         wsgi_file_wrapper: Optional[
             Callable[[ReadableIO, int], Iterable[bytes]]
@@ -1242,6 +1252,11 @@ class App:
 
         data: Optional[bytes] = resp.render_body()
         if data is not None:
+            if self._teardown_middleware:
+                return (
+                    helpers._WSGIBytesWrapper(data, self._perform_teardown, req, resp),
+                    len(data),
+                )
             return [data], len(data)
 
         stream = resp.stream
@@ -1274,6 +1289,18 @@ class App:
             self._sink_and_static_routes = tuple(self._sinks + self._static_routes)  # type: ignore[operator]
         else:
             self._sink_and_static_routes = tuple(self._static_routes + self._sinks)  # type: ignore[operator]
+
+    def _perform_teardown(self, req, resp):
+        for process_teardown in self._teardown_middleware:
+            try:
+                process_teardown(req, resp)
+            except Exception:
+                # TODO: Pass errors to instrumentation
+                # print(f'Teardown exception in {process_teardown=}')
+                pass
+
+        for callback, _ in resp._registered_callbacks or ():
+            self.resp_options.task_manager.schedule_sync_task(callback)
 
 
 # TODO(myusko): This class is a compatibility alias, and should be removed

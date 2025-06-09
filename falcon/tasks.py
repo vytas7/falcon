@@ -14,13 +14,15 @@
 
 """Task manager."""
 
+from __future__ import annotations
+
 import abc
 import asyncio
 import concurrent
 import contextlib
 import functools
 import threading
-from typing import Optional, Set, Callable
+from typing import Callable, Optional, Set
 
 from falcon.errors import CompatibilityError
 

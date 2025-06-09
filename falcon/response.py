@@ -22,6 +22,7 @@ import functools
 import mimetypes
 from typing import (
     Any,
+    Callable,
     ClassVar,
     Dict,
     Iterable,
@@ -50,6 +51,8 @@ from falcon.response_helpers import _format_header_value_list
 from falcon.response_helpers import _format_range
 from falcon.response_helpers import _header_property
 from falcon.response_helpers import _is_ascii_encodable
+from falcon.tasks import BaseTaskManager
+from falcon.tasks import SyncTaskManager
 from falcon.typing import Headers
 from falcon.typing import ReadableIO
 from falcon.util import dt_to_http
@@ -91,6 +94,7 @@ class Response:
         '_headers',
         '_media',
         '_media_rendered',
+        '_registered_callbacks',
         '__dict__',
     )
 
@@ -100,6 +104,7 @@ class Response:
     _headers: Headers
     _media: Optional[Any]
     _media_rendered: UnsetOr[bytes]
+    _registered_callbacks: Optional[List[Callable]]
 
     # Child classes may override this
     context_type: ClassVar[Type[structures.Context]] = structures.Context
@@ -191,6 +196,7 @@ class Response:
         self._data = None
         self._media = None
         self._media_rendered = _UNSET
+        self._registered_callbacks = None
 
         self.context = self.context_type()
 
@@ -1399,6 +1405,13 @@ class Response:
             items += [('set-cookie', c.OutputString()) for c in self._cookies.values()]
         return items
 
+    def schedule(self, callback: Callable[[], None]) -> None:
+        rc = (callback, False)
+        if not self._registered_callbacks:
+            self._registered_callbacks = [rc]
+        else:
+            self._registered_callbacks.append(rc)
+
 
 class ResponseOptions:
     """Defines a set of configurable response options.
@@ -1454,10 +1467,14 @@ class ResponseOptions:
     .. versionadded:: 4.0
     """
 
+    task_manager: BaseTaskManager
+    """Whoa... prototyping!"""
+
     __slots__ = (
         'secure_cookies_by_default',
         'default_media_type',
         'media_handlers',
+        'task_manager',
         'static_media_types',
         'xml_error_serialization',
     )
@@ -1472,3 +1489,5 @@ class ResponseOptions:
             mimetypes.init()
         self.static_media_types = mimetypes.types_map.copy()
         self.static_media_types.update(_DEFAULT_STATIC_MEDIA_TYPES)
+
+        self.task_manager = SyncTaskManager()

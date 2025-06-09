@@ -387,3 +387,46 @@ class CloseableStreamIterator:
             self._stream.close()
         except (AttributeError, TypeError):
             pass
+
+
+class _WSGIBytesWrapper:
+    def __init__(self, data: bytes, close, req, resp) -> None:
+        self._data = data
+        self._close = close
+
+        self._req = req
+        self._resp = resp
+
+    def __iter__(self):
+        yield self._data
+
+    def close(self) -> None:
+        # print('Calling close()')
+        self._close(self._req, self._resp)
+
+
+class _WSGIIterableWrapper:
+    def __init__(self, stream: IO[bytes], close, req, resp) -> None:
+        self._stream = stream
+        self._stream_close = getattr(stream, 'close', None)
+        self._stream_ex = None
+
+        self._close = close
+
+        self._req = req
+        self._resp = resp
+
+    def __iter__(self):
+        try:
+            yield from self._stream
+        except Exception as ex:
+            self._stream_ex = ex
+
+    def close(self) -> None:
+        # print(f'Calling close(): {self._stream_close=} {self._stream_ex=}')
+
+        try:
+            if self._stream_close is not None:
+                self._stream_close()
+        finally:
+            self._close(self._req, self._resp)

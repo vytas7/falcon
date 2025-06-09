@@ -2,8 +2,9 @@ import asyncio
 import functools
 
 import pytest
-from falcon.tasks import SyncTaskManager
+
 from falcon.errors import CompatibilityError
+from falcon.tasks import SyncTaskManager
 
 
 @pytest.fixture()
