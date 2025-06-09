@@ -3,6 +3,9 @@
 The App Class
 =============
 
+.. autoclass:: falcon.constants.RequestStage
+    :members:
+
 Falcon supports both the WSGI (:class:`falcon.App`) and
 ASGI (:class:`falcon.asgi.App`) protocols. This is done
 by instantiating the respective ``App`` class to create a

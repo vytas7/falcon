@@ -193,6 +193,22 @@ _DEFAULT_STATIC_MEDIA_TYPES = tuple(
 )
 
 
+class RequestStage(Enum):
+    """Enum representing the current stage of the request-response cycle."""
+
+    INIT_REQ_RESP = 'init_req_resp'
+    """Instantiation of the req/resp objects."""
+
+    MIDDLEWARE_PROCESS_REQ = 'mw_process_req'
+    """Invocation of ``process_request`` :ref:`middleware <middleware>`."""
+
+    MIDDLEWARE_PROCESS_RESOURCE = 'mw_process_rsrc'
+    """Invocation of ``process_resource`` :ref:`middleware <middleware>`."""
+
+    MIDDLEWARE_PROCESS_RESPONSE = 'mw_process_resp'
+    """Invocation of ``process_response`` :ref:`middleware <middleware>`."""
+
+
 class WebSocketPayloadType(Enum):
     """Enum representing the two possible WebSocket payload types."""
 

@@ -376,15 +376,22 @@ class App:
                 status and headers on a response.
 
         """
-        req = self._request_type(env, options=self.req_options)
-        resp = self._response_type(options=self.resp_options)
-        resource: Optional[object] = None
-        params: Dict[str, Any] = {}
+        try:
+            req = self._request_type(env, options=self.req_options)
+            resp = self._response_type(options=self.resp_options)
 
-        dependent_mw_resp_stack: List[ProcessResponseMethod] = []
-        mw_req_stack, mw_rsrc_stack, mw_resp_stack = self._middleware
+            # NOTE(vytas): Although the below initializaters ought to be
+            #   infallible, there is no real advantage of keeping them outside
+            #   of this try..except block.
+            resource: Optional[object] = None
+            params: Dict[str, Any] = {}
 
-        req_succeeded = False
+            dependent_mw_resp_stack: List[ProcessResponseMethod] = []
+            mw_req_stack, mw_rsrc_stack, mw_resp_stack = self._middleware
+
+            req_succeeded = False
+        except Exception:
+            raise
 
         try:
             if req.method in self._META_METHODS:
@@ -454,12 +461,17 @@ class App:
 
                 req_succeeded = False
 
-        body: Iterable[bytes] = []
-        length: Optional[int] = 0
+        body: Iterable[bytes]
+        length: Optional[int]
 
         try:
             body, length = self._get_body(resp, env.get('wsgi.file_wrapper'))
         except Exception as ex:
+            # PERF(vytas): Move this initialization into the except branch, the
+            #   variables are otherwise assigned from self._get_body().
+            body = []
+            length = 0
+
             if not self._handle_exception(req, resp, ex, params):
                 raise
 
