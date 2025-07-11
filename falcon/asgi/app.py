@@ -870,13 +870,13 @@ class App(falcon.app.App):
     @overload
     def add_error_handler(
         self,
-        exception: Union[Type[BaseException], Iterable[Type[BaseException]]],
+        exception: Union[Type[Exception], Iterable[Type[Exception]]],
         handler: Optional[AsgiErrorHandler] = None,
     ) -> None: ...
 
     def add_error_handler(  # type: ignore[misc]
         self,
-        exception: Union[Type[BaseException], Iterable[Type[BaseException]]],
+        exception: Union[Type[Exception], Iterable[Type[Exception]]],
         handler: Optional[AsgiErrorHandler] = None,
     ) -> None:
         """Register a handler for one or more exception types.

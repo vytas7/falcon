@@ -63,6 +63,7 @@ from falcon.errors import HTTPBadRequest
 from falcon.errors import HTTPInternalServerError
 from falcon.http_error import HTTPError
 from falcon.http_status import HTTPStatus
+from falcon.instrumentation.base import Instrumentation
 from falcon.middleware import CORSMiddleware
 from falcon.request import Request
 from falcon.request import RequestOptions
@@ -246,6 +247,7 @@ class App:
         '_cors_enable',
         '_error_handlers',
         '_independent_middleware',
+        '_instrumentation',
         '_middleware',
         '_request_type',
         '_response_type',
@@ -264,6 +266,7 @@ class App:
     _cors_enable: bool
     _error_handlers: Dict[Type[BaseException], ErrorHandler]
     _independent_middleware: bool
+    _instrumentation: Optional[Instrumentation]
     _middleware: helpers.PreparedMiddlewareResult
     _request_type: Type[Request]
     _response_type: Type[Response]
@@ -311,34 +314,28 @@ class App:
         independent_middleware: bool = True,
         cors_enable: bool = False,
         sink_before_static_route: bool = True,
+        _instrumentation: Optional[Instrumentation] = None,
     ) -> None:
         self._cors_enable = cors_enable
         self._sink_before_static_route = sink_before_static_route
         self._sinks = []
         self._static_routes = []
         self._sink_and_static_routes = ()
-
-        if cors_enable:
-            cm = CORSMiddleware()
-
-            if middleware is None:
-                middleware = [cm]
-            else:
-                try:
-                    # NOTE(kgriffs): Check to see if middleware is an
-                    #   iterable, and if so, append the CORSMiddleware
-                    #   instance.
-                    middleware = list(cast(Iterable[SyncMiddleware], middleware))
-                    middleware.append(cm)
-                except TypeError:
-                    # NOTE(kgriffs): Assume the middleware kwarg references
-                    #   a single middleware component.
-                    middleware = [cast(SyncMiddleware, middleware), cm]
+        self._instrumentation = _instrumentation
 
         # set middleware
         self._unprepared_middleware = []
         self._independent_middleware = independent_middleware
+
+        # NOTE(vytas): Middleware is added in the following order:
+        #   1. Instrumentation (since it needs to perform teardown last).
+        #   2. Middleware from the initializer parameter.
+        #   3. Automatic CORS middleware.
+        if _instrumentation:
+            self.add_middleware(_instrumentation)  # type: ignore[arg-type]
         self.add_middleware(middleware or [])
+        if cors_enable:
+            self.add_middleware(CORSMiddleware())
 
         self._router = router or routing.DefaultRouter()
         self._router_search = self._router.find
@@ -377,6 +374,15 @@ class App:
                 status and headers on a response.
 
         """
+
+        span: Optional[object]
+        if self._instrumentation:
+            span, start_response = self._instrumentation.start_wsgi_span(
+                env, start_response
+            )
+        else:
+            span = None  # noqa: F841
+
         req = self._request_type(env, options=self.req_options)
         resp = self._response_type(options=self.resp_options)
         resource: Optional[object] = None
@@ -541,9 +547,11 @@ class App:
         #   the chance that middleware may be empty.
         if middleware:
             try:
+                # NOTE(kgriffs): Check to see if middleware is an iterable.
                 middleware = list(cast(Iterable[SyncMiddleware], middleware))
             except TypeError:
-                # middleware is not iterable; assume it is just one bare component
+                # NOTE(kgriffs): Middleware is not iterable; assume it is just
+                #   one bare component.
                 middleware = [cast(SyncMiddleware, middleware)]
 
             if (
@@ -1162,7 +1170,7 @@ class App:
         return None
 
     def _handle_exception(
-        self, req: Request, resp: Response, ex: BaseException, params: Dict[str, Any]
+        self, req: Request, resp: Response, ex: Exception, params: Dict[str, Any]
     ) -> bool:
         """Handle an exception raised from mw or a responder.
 
@@ -1179,6 +1187,11 @@ class App:
             bool: ``True`` if a handler was found and called for the
             exception, ``False`` otherwise.
         """
+        # TODO(vytas): Restructure so that this function does not leak
+        #   exceptions, handles reraise, and uses fatal=True when reraising.
+        if self._instrumentation:
+            self._instrumentation.record_exception(req.env, ex)
+
         err_handler = self._find_error_handler(ex)
 
         # NOTE(caselit): Reset body, data and media before calling the handler

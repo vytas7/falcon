@@ -18,6 +18,7 @@ Framework Reference
    hooks
    routing
    inspect
+   instrumentation
    util
    testing
    typing
