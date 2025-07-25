@@ -1,11 +1,13 @@
-import dataclasses
+from __future__ import annotations
+
+from dataclasses import dataclass
 from typing import Optional
 from uuid import UUID
 
 import falcon
 
 
-@dataclasses.dataclass
+@dataclass
 class RichContext:
     userid: Optional[UUID] = None
     role: str = 'anonymous'
