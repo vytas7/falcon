@@ -113,22 +113,22 @@ StoreArg = Optional[Dict[str, Any]]
 RangeSetHeader = Union[Tuple[int, int, int], Tuple[int, int, int, str]]
 
 
-class GetResource(Protocol):
+class GetResource(Protocol[_ReqT, _RespT]):
     def on_get(self, req: _ReqT, resp: _RespT, *args: Any, **kwargs: Any) -> None: ...
 
 
-class PatchResource(Protocol):
+class PatchResource(Protocol[_ReqT, _RespT]):
     def on_post(self, req: _ReqT, resp: _RespT, *args: Any, **kwargs: Any) -> None: ...
 
 
-class PostResource(Protocol):
+class PostResource(Protocol[_ReqT, _RespT]):
     def on_post(self, req: _ReqT, resp: _RespT, *args: Any, **kwargs: Any) -> None: ...
 
 
 Resource = Union[
-    GetResource,
-    PatchResource,
-    PostResource,
+    GetResource[_ReqT, _RespT],
+    PatchResource[_ReqT, _RespT],
+    PostResource[_ReqT, _RespT],
 ]
 
 

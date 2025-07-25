@@ -440,7 +440,7 @@ class App(Generic[_ReqT, _RespT]):
         """
         req = self._request_type(env, options=self.req_options)
         resp = self._response_type(options=self.resp_options)
-        resource: Optional[Resource] = None
+        resource: Optional[Resource[_ReqT, _RespT]] = None
         params: Dict[str, Any] = {}
 
         dependent_mw_resp_stack: List[ProcessResponseMethod] = []
@@ -640,7 +640,9 @@ class App(Generic[_ReqT, _RespT]):
             independent_middleware=self._independent_middleware,
         )
 
-    def add_route(self, uri_template: str, resource: Resource, **kwargs: Any) -> None:
+    def add_route(
+        self, uri_template: str, resource: Resource[_ReqT, _RespT], **kwargs: Any
+    ) -> None:
         """Associate a templatized URI path with a resource.
 
         Falcon routes incoming requests to resources based on a set of
