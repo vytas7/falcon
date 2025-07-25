@@ -66,6 +66,9 @@ _T = TypeVar('_T')
 _UNSET = _Unset.UNSET
 UnsetOr = Union[Literal[_Unset.UNSET], _T]
 
+_ReqT = TypeVar('_ReqT', bound=Request, contravariant=True)
+_RespT = TypeVar('_RespT', bound=Response, contravariant=True)
+
 Link = Dict[str, str]
 CookieArg = Mapping[str, Union[str, Cookie]]
 # Error handlers
@@ -91,10 +94,8 @@ ErrorSerializer = Callable[['Request', 'Response', 'HTTPError'], None]
 SinkPrefix = Union[str, Pattern[str]]
 
 
-class SinkCallable(Protocol):
-    def __call__(
-        self, req: Request, resp: Response, **kwargs: Optional[str]
-    ) -> None: ...
+class SinkCallable(Protocol[_ReqT, _RespT]):
+    def __call__(self, req: _ReqT, resp: _RespT, **kwargs: Optional[str]) -> None: ...
 
 
 class AsgiSinkCallable(Protocol):
@@ -108,8 +109,27 @@ HeaderIter = Iterable[Tuple[str, str]]
 HeaderArg = Union[HeaderMapping, HeaderIter]
 ResponseStatus = Union[http.HTTPStatus, str, int]
 StoreArg = Optional[Dict[str, Any]]
-Resource = object
+# Resource = object
 RangeSetHeader = Union[Tuple[int, int, int], Tuple[int, int, int, str]]
+
+
+class GetResource(Protocol):
+    def on_get(self, req: _ReqT, resp: _RespT, *args: Any, **kwargs: Any) -> None: ...
+
+
+class PatchResource(Protocol):
+    def on_post(self, req: _ReqT, resp: _RespT, *args: Any, **kwargs: Any) -> None: ...
+
+
+class PostResource(Protocol):
+    def on_post(self, req: _ReqT, resp: _RespT, *args: Any, **kwargs: Any) -> None: ...
+
+
+Resource = Union[
+    GetResource,
+    PatchResource,
+    PostResource,
+]
 
 
 # WSGI
@@ -129,9 +149,11 @@ class ResponderCallable(Protocol):
 
 ProcessRequestMethod = Callable[['Request', 'Response'], None]
 ProcessResourceMethod = Callable[
-    ['Request', 'Response', Resource, Dict[str, Any]], None
+    ['Request', 'Response', Optional[Resource], Dict[str, Any]], None
 ]
-ProcessResponseMethod = Callable[['Request', 'Response', Resource, bool], None]
+ProcessResponseMethod = Callable[
+    ['Request', 'Response', Optional[Resource], bool], None
+]
 
 
 # ASGI
@@ -161,14 +183,14 @@ AsgiReceive = Callable[[], Awaitable['AsgiEvent']]
 AsgiSend = Callable[['AsgiSendMsg'], Awaitable[None]]
 AsgiProcessRequestMethod = Callable[['AsgiRequest', 'AsgiResponse'], Awaitable[None]]
 AsgiProcessResourceMethod = Callable[
-    ['AsgiRequest', 'AsgiResponse', Resource, Dict[str, Any]], Awaitable[None]
+    ['AsgiRequest', 'AsgiResponse', Optional[Resource], Dict[str, Any]], Awaitable[None]
 ]
 AsgiProcessResponseMethod = Callable[
-    ['AsgiRequest', 'AsgiResponse', Resource, bool], Awaitable[None]
+    ['AsgiRequest', 'AsgiResponse', Optional[Resource], bool], Awaitable[None]
 ]
 AsgiProcessRequestWsMethod = Callable[['AsgiRequest', 'WebSocket'], Awaitable[None]]
 AsgiProcessResourceWsMethod = Callable[
-    ['AsgiRequest', 'WebSocket', Resource, Dict[str, Any]], Awaitable[None]
+    ['AsgiRequest', 'WebSocket', Optional[Resource], Dict[str, Any]], Awaitable[None]
 ]
 ResponseCallbacks = Union[
     Tuple[Callable[[], None], Literal[False]],
@@ -201,29 +223,33 @@ Responder = Union[ResponderMethod, AsgiResponderMethod]
 
 
 # WSGI middleware interface
-class WsgiMiddlewareWithProcessRequest(Protocol):
+class WsgiMiddlewareWithProcessRequest(Protocol[_ReqT, _RespT]):
     """WSGI Middleware with request handler."""
 
-    def process_request(self, req: Request, resp: Response) -> None: ...
+    def process_request(self, req: _ReqT, resp: _RespT) -> None: ...
 
 
-class WsgiMiddlewareWithProcessResource(Protocol):
+class WsgiMiddlewareWithProcessResource(Protocol[_ReqT, _RespT]):
     """WSGI Middleware with resource handler."""
 
     def process_resource(
         self,
-        req: Request,
-        resp: Response,
-        resource: object,
+        req: _ReqT,
+        resp: _RespT,
+        resource: Optional[Resource],
         params: Dict[str, Any],
     ) -> None: ...
 
 
-class WsgiMiddlewareWithProcessResponse(Protocol):
+class WsgiMiddlewareWithProcessResponse(Protocol[_ReqT, _RespT]):
     """WSGI Middleware with response handler."""
 
     def process_response(
-        self, req: Request, resp: Response, resource: object, req_succeeded: bool
+        self,
+        req: _ReqT,
+        resp: _RespT,
+        resource: Optional[Resource],
+        req_succeeded: bool,
     ) -> None: ...
 
 
@@ -335,9 +361,9 @@ class UniversalMiddlewareWithProcessResponse(
 # but better than nothing. Middleware conforming to any protocol of the union
 # will pass the type check. Other protocols violations are not checked.
 SyncMiddleware = Union[
-    WsgiMiddlewareWithProcessRequest,
-    WsgiMiddlewareWithProcessResource,
-    WsgiMiddlewareWithProcessResponse,
+    WsgiMiddlewareWithProcessRequest[_ReqT, _RespT],
+    WsgiMiddlewareWithProcessResource[_ReqT, _RespT],
+    WsgiMiddlewareWithProcessResponse[_ReqT, _RespT],
 ]
 """Synchronous (WSGI) application middleware.
 

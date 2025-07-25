@@ -48,6 +48,7 @@ from falcon._typing import AsgiResponderWsCallable
 from falcon._typing import AsgiSend
 from falcon._typing import AsgiSinkCallable
 from falcon._typing import AsyncMiddleware
+from falcon._typing import Resource
 from falcon._typing import SinkPrefix
 import falcon.app
 from falcon.app_helpers import AsyncPreparedMiddlewareResult
@@ -459,7 +460,7 @@ class App(falcon.app.App):
         )
         resp = self._response_type(options=self.resp_options)
 
-        resource: Optional[object] = None
+        resource: Optional[Resource] = None
         params: Dict[str, Any] = {}
 
         dependent_mw_resp_stack: list = []
@@ -840,7 +841,7 @@ class App(falcon.app.App):
         if resp._registered_callbacks:
             self._schedule_callbacks(resp)
 
-    def add_route(self, uri_template: str, resource: object, **kwargs: Any) -> None:
+    def add_route(self, uri_template: str, resource: Resource, **kwargs: Any) -> None:
         # NOTE(kgriffs): Inject an extra kwarg so that the compiled router
         #   will know to validate the responder methods to make sure they
         #   are async coroutines.
@@ -1142,6 +1143,7 @@ class App(falcon.app.App):
         params: Dict[str, Any] = {}
 
         request_mw, resource_mw = self._middleware_ws
+        resource: Optional[Resource]
 
         try:
             for process_request_ws in request_mw:

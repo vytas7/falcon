@@ -28,6 +28,7 @@ from typing import (
     ClassVar,
     Dict,
     FrozenSet,
+    Generic,
     Iterable,
     List,
     Literal,
@@ -52,6 +53,7 @@ from falcon._typing import ErrorHandler
 from falcon._typing import ErrorSerializer
 from falcon._typing import FindMethod
 from falcon._typing import ProcessResponseMethod
+from falcon._typing import Resource
 from falcon._typing import ResponderCallable
 from falcon._typing import SinkCallable
 from falcon._typing import SinkPrefix
@@ -93,8 +95,11 @@ _TYPELESS_STATUS_CODES = frozenset(
 )
 _BE = TypeVar('_BE', bound=Exception)
 
+_ReqT = TypeVar('_ReqT', bound=Request, contravariant=True)
+_RespT = TypeVar('_RespT', bound=Response, contravariant=True)
 
-class App:
+
+class App(Generic[_ReqT, _RespT]):
     '''The main entry point into a Falcon-based WSGI app.
 
     Each App instance provides a callable
@@ -265,8 +270,8 @@ class App:
     _error_handlers: Dict[Type[Exception], ErrorHandler]
     _independent_middleware: bool
     _middleware: helpers.PreparedMiddlewareResult
-    _request_type: Type[Request]
-    _response_type: Type[Response]
+    _request_type: Type[_ReqT]
+    _response_type: Type[_RespT]
     _router_search: FindMethod
     # NOTE(caselit): this should actually be a protocol of the methods required
     # by a router, hardcoded to CompiledRouter for convenience for now.
@@ -287,7 +292,7 @@ class App:
     _static_routes: List[
         Tuple[routing.StaticRoute, routing.StaticRoute, Literal[False]]
     ]
-    _unprepared_middleware: List[SyncMiddleware]
+    _unprepared_middleware: List[SyncMiddleware[_ReqT, _RespT]]
 
     # Attributes
     req_options: RequestOptions
@@ -301,12 +306,84 @@ class App:
     See also: :class:`~.ResponseOptions`
     """
 
+    @overload
+    def __init__(
+        self: 'App[Request, Response]',
+        media_type: str = constants.DEFAULT_MEDIA_TYPE,
+        request_type: None = None,
+        response_type: None = None,
+        middleware: Optional[
+            Union[
+                SyncMiddleware[_ReqT, _RespT], Iterable[SyncMiddleware[_ReqT, _RespT]]
+            ]
+        ] = None,
+        router: Optional[routing.CompiledRouter] = None,
+        independent_middleware: bool = True,
+        cors_enable: bool = False,
+        sink_before_static_route: bool = True,
+    ) -> None: ...
+
+    @overload
+    def __init__(
+        self: 'App[_ReqT, Response]',
+        media_type: str = constants.DEFAULT_MEDIA_TYPE,
+        request_type: Optional[Type[_ReqT]] = None,
+        response_type: None = None,
+        middleware: Optional[
+            Union[
+                SyncMiddleware[_ReqT, _RespT], Iterable[SyncMiddleware[_ReqT, _RespT]]
+            ]
+        ] = None,
+        router: Optional[routing.CompiledRouter] = None,
+        independent_middleware: bool = True,
+        cors_enable: bool = False,
+        sink_before_static_route: bool = True,
+    ) -> None: ...
+
+    @overload
+    def __init__(
+        self: 'App[Request, _RespT]',
+        media_type: str = constants.DEFAULT_MEDIA_TYPE,
+        request_type: None = None,
+        response_type: Optional[Type[_RespT]] = None,
+        middleware: Optional[
+            Union[
+                SyncMiddleware[_ReqT, _RespT], Iterable[SyncMiddleware[_ReqT, _RespT]]
+            ]
+        ] = None,
+        router: Optional[routing.CompiledRouter] = None,
+        independent_middleware: bool = True,
+        cors_enable: bool = False,
+        sink_before_static_route: bool = True,
+    ) -> None: ...
+
+    @overload
     def __init__(
         self,
         media_type: str = constants.DEFAULT_MEDIA_TYPE,
-        request_type: Optional[Type[Request]] = None,
-        response_type: Optional[Type[Response]] = None,
-        middleware: Optional[Union[SyncMiddleware, Iterable[SyncMiddleware]]] = None,
+        request_type: Optional[Type[_ReqT]] = None,
+        response_type: Optional[Type[_RespT]] = None,
+        middleware: Optional[
+            Union[
+                SyncMiddleware[_ReqT, _RespT], Iterable[SyncMiddleware[_ReqT, _RespT]]
+            ]
+        ] = None,
+        router: Optional[routing.CompiledRouter] = None,
+        independent_middleware: bool = True,
+        cors_enable: bool = False,
+        sink_before_static_route: bool = True,
+    ) -> None: ...
+
+    def __init__(
+        self,
+        media_type: str = constants.DEFAULT_MEDIA_TYPE,
+        request_type: Optional[Type[_ReqT]] = None,
+        response_type: Optional[Type[_RespT]] = None,
+        middleware: Optional[
+            Union[
+                SyncMiddleware[_ReqT, _RespT], Iterable[SyncMiddleware[_ReqT, _RespT]]
+            ]
+        ] = None,
         router: Optional[routing.CompiledRouter] = None,
         independent_middleware: bool = True,
         cors_enable: bool = False,
@@ -327,8 +404,8 @@ class App:
         self._router = router or routing.DefaultRouter()
         self._router_search = self._router.find
 
-        self._request_type = request_type or Request
-        self._response_type = response_type or Response
+        self._request_type = request_type or Request  # type: ignore[assignment]
+        self._response_type = response_type or Response  # type: ignore[assignment]
 
         self._error_handlers = {}
         self._serialize_error = helpers.default_serialize_error
@@ -363,7 +440,7 @@ class App:
         """
         req = self._request_type(env, options=self.req_options)
         resp = self._response_type(options=self.resp_options)
-        resource: Optional[object] = None
+        resource: Optional[Resource] = None
         params: Dict[str, Any] = {}
 
         dependent_mw_resp_stack: List[ProcessResponseMethod] = []
@@ -510,7 +587,10 @@ class App:
         return self._router.options
 
     def add_middleware(
-        self, middleware: Union[SyncMiddleware, Iterable[SyncMiddleware]]
+        self,
+        middleware: Union[
+            SyncMiddleware[_ReqT, _RespT], Iterable[SyncMiddleware[_ReqT, _RespT]]
+        ],
     ) -> None:
         """Add one or more additional middleware components.
 
@@ -526,11 +606,13 @@ class App:
         if middleware:
             try:
                 # NOTE(kgriffs): Check to see if middleware is an iterable.
-                middleware = list(cast(Iterable[SyncMiddleware], middleware))
+                middleware = list(
+                    cast(Iterable[SyncMiddleware[_ReqT, _RespT]], middleware)
+                )
             except TypeError:
                 # NOTE(kgriffs): Middleware is not iterable; assume it is just
                 #   one bare component.
-                middleware = [cast(SyncMiddleware, middleware)]
+                middleware = [cast(SyncMiddleware[_ReqT, _RespT], middleware)]
 
             if (
                 self._cors_enable
@@ -558,7 +640,7 @@ class App:
             independent_middleware=self._independent_middleware,
         )
 
-    def add_route(self, uri_template: str, resource: object, **kwargs: Any) -> None:
+    def add_route(self, uri_template: str, resource: Resource, **kwargs: Any) -> None:
         """Associate a templatized URI path with a resource.
 
         Falcon routes incoming requests to resources based on a set of
@@ -1001,7 +1083,9 @@ class App:
     # ------------------------------------------------------------------------
 
     def _prepare_middleware(
-        self, middleware: List[SyncMiddleware], independent_middleware: bool = False
+        self,
+        middleware: List[SyncMiddleware[_ReqT, _RespT]],
+        independent_middleware: bool = False,
     ) -> helpers.PreparedMiddlewareResult:
         return helpers.prepare_middleware(
             middleware=middleware, independent_middleware=independent_middleware

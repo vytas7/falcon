@@ -101,7 +101,7 @@ class AsyncAfterFn(Protocol):
 
 
 AfterFn = Union[SyncAfterFn, AsyncAfterFn]
-_R = TypeVar('_R', bound=Union['Responder', 'Resource'])
+_R = TypeVar('_R', bound=Union['Responder', object])
 
 
 _DECORABLE_METHOD_NAME = re.compile(
