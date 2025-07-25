@@ -66,8 +66,8 @@ _T = TypeVar('_T')
 _UNSET = _Unset.UNSET
 UnsetOr = Union[Literal[_Unset.UNSET], _T]
 
-_ReqT = TypeVar('_ReqT', bound=Request, contravariant=True)
-_RespT = TypeVar('_RespT', bound=Response, contravariant=True)
+_ReqT = TypeVar('_ReqT', bound='Request', contravariant=True)
+_RespT = TypeVar('_RespT', bound='Response', contravariant=True)
 
 Link = Dict[str, str]
 CookieArg = Mapping[str, Union[str, Cookie]]
