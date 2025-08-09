@@ -68,6 +68,8 @@ UnsetOr = Union[Literal[_Unset.UNSET], _T]
 
 _ReqT = TypeVar('_ReqT', bound='Request', contravariant=True)
 _RespT = TypeVar('_RespT', bound='Response', contravariant=True)
+_AReqT = TypeVar('_AReqT', bound='AsgiRequest', contravariant=True)
+_ARespT = TypeVar('_ARespT', bound='AsgiResponse', contravariant=True)
 
 Link = Dict[str, str]
 CookieArg = Mapping[str, Union[str, Cookie]]
@@ -95,12 +97,12 @@ SinkPrefix = Union[str, Pattern[str]]
 
 
 class SinkCallable(Protocol[_ReqT, _RespT]):
-    def __call__(self, req: _ReqT, resp: _RespT, **kwargs: Optional[str]) -> None: ...
+    def __call__(self, req: _ReqT, resp: _RespT, **kwargs: Any) -> None: ...
 
 
-class AsgiSinkCallable(Protocol):
+class AsgiSinkCallable(Protocol[_AReqT, _ARespT]):
     async def __call__(
-        self, req: AsgiRequest, resp: Optional[AsgiResponse], **kwargs: Optional[str]
+        self, req: _AReqT, resp: Optional[_ARespT], **kwargs: Any
     ) -> None: ...
 
 

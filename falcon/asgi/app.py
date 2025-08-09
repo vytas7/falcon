@@ -99,8 +99,11 @@ _TYPELESS_STATUS_CODES = frozenset([204, 304])
 _FALLBACK_WS_ERROR_CODE = 3011
 _BE = TypeVar('_BE', bound=Exception)
 
+_ReqT = TypeVar('_ReqT', bound=Request, contravariant=True)
+_RespT = TypeVar('_RespT', bound=Response, contravariant=True)
 
-class App(falcon.app.App):
+
+class App(falcon.app.App[_ReqT, _RespT]):
     '''The main entry point into a Falcon-based ASGI app.
 
     Each App instance provides a callable
@@ -358,8 +361,8 @@ class App(falcon.app.App):
     _error_handlers: Dict[Type[Exception], AsgiErrorHandler]  # type: ignore[assignment]
     _middleware: AsyncPreparedMiddlewareResult  # type: ignore[assignment]
     _middleware_ws: AsyncPreparedMiddlewareWsResult
-    _request_type: Type[Request]
-    _response_type: Type[Response]
+    _request_type: Type[_ReqT]
+    _response_type: Type[_RespT]
     _unprepared_middleware: List[AsyncMiddleware]  # type: ignore[assignment]
 
     ws_options: WebSocketOptions
@@ -368,11 +371,63 @@ class App(falcon.app.App):
     See also: :class:`~.WebSocketOptions`.
     """
 
+    @overload
+    def __init__(
+        self: 'App[Request, Response]',
+        media_type: str = constants.DEFAULT_MEDIA_TYPE,
+        request_type: None = None,
+        response_type: None = None,
+        middleware: Optional[Union[AsyncMiddleware, Iterable[AsyncMiddleware]]] = None,
+        router: Optional[routing.CompiledRouter] = None,
+        independent_middleware: bool = True,
+        cors_enable: bool = False,
+        sink_before_static_route: bool = True,
+    ) -> None: ...
+
+    @overload
+    def __init__(
+        self: 'App[_ReqT, Response]',
+        media_type: str = constants.DEFAULT_MEDIA_TYPE,
+        request_type: Optional[Type[_ReqT]] = None,
+        response_type: None = None,
+        middleware: Optional[Union[AsyncMiddleware, Iterable[AsyncMiddleware]]] = None,
+        router: Optional[routing.CompiledRouter] = None,
+        independent_middleware: bool = True,
+        cors_enable: bool = False,
+        sink_before_static_route: bool = True,
+    ) -> None: ...
+
+    @overload
+    def __init__(
+        self: 'App[Request, _RespT]',
+        media_type: str = constants.DEFAULT_MEDIA_TYPE,
+        request_type: None = None,
+        response_type: Optional[Type[_RespT]] = None,
+        middleware: Optional[Union[AsyncMiddleware, Iterable[AsyncMiddleware]]] = None,
+        router: Optional[routing.CompiledRouter] = None,
+        independent_middleware: bool = True,
+        cors_enable: bool = False,
+        sink_before_static_route: bool = True,
+    ) -> None: ...
+
+    @overload
     def __init__(
         self,
         media_type: str = constants.DEFAULT_MEDIA_TYPE,
-        request_type: Optional[Type[Request]] = None,
-        response_type: Optional[Type[Response]] = None,
+        request_type: Optional[Type[_ReqT]] = None,
+        response_type: Optional[Type[_RespT]] = None,
+        middleware: Optional[Union[AsyncMiddleware, Iterable[AsyncMiddleware]]] = None,
+        router: Optional[routing.CompiledRouter] = None,
+        independent_middleware: bool = True,
+        cors_enable: bool = False,
+        sink_before_static_route: bool = True,
+    ) -> None: ...
+
+    def __init__(
+        self,
+        media_type: str = constants.DEFAULT_MEDIA_TYPE,
+        request_type: Optional[Type[_ReqT]] = None,
+        response_type: Optional[Type[_RespT]] = None,
         middleware: Optional[Union[AsyncMiddleware, Iterable[AsyncMiddleware]]] = None,
         router: Optional[routing.CompiledRouter] = None,
         independent_middleware: bool = True,
@@ -381,8 +436,8 @@ class App(falcon.app.App):
     ) -> None:
         super().__init__(
             media_type,
-            request_type or Request,
-            response_type or Response,
+            request_type or Request,  # type: ignore[arg-type]
+            response_type or Response,  # type: ignore[arg-type]
             middleware,  # type: ignore[arg-type]
             router,
             independent_middleware,
@@ -852,7 +907,9 @@ class App(falcon.app.App):
 
     add_route.__doc__ = falcon.app.App.add_route.__doc__  # NOTE: not really required
 
-    def add_sink(self, sink: AsgiSinkCallable, prefix: SinkPrefix = r'/') -> None:  # type: ignore[override]
+    def add_sink(  # type: ignore[override]
+        self, sink: AsgiSinkCallable[_ReqT, _RespT], prefix: SinkPrefix = r'/'
+    ) -> None:
         if not iscoroutinefunction(sink) and is_python_func(sink):
             if _should_wrap_non_coroutines():
                 sink = wrap_sync_to_async(sink)
