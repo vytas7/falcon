@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import UnionType
 from typing import Any, get_type_hints
 
 DOC_TEMPLATE = (
@@ -7,29 +8,73 @@ DOC_TEMPLATE = (
 )
 
 
+class _ValueParser:
+    def __init__(self, key: str, data_type: type, required: bool) -> None:
+        self._key = key
+        self._data_type = data_type
+        self._required = required
+
+    def __call__(self, value: Any, obj: _Object) -> None:
+        if value is None:
+            if self._required:
+                raise ValueError(f'{self._key} is required')
+            setattr(obj, self._key, None)
+        else:
+            if issubclass(self._data_type, _Object):
+                parsed: Any = self._data_type.parse(value)
+            else:
+                assert isinstance(value, self._data_type)
+                parsed = value
+            setattr(obj, self._key, parsed)
+
+    def __repr__(self) -> str:  # pragma: nocover
+        if self._required:
+            return f'ValueParser<{self._key}: {self._data_type.__name__}>'
+        return f'ValueParser<{self._key}: {self._data_type.__name__} | None>'
+
+
 class _Object:
-    __registry__: dict[str, 'type[_Object]'] = {}
-    __schema__: dict[str, Any] = {}
+    __schema__: dict[str, _ValueParser]
+
+    _extensions: tuple[tuple[str, Any], ...] = ()
+
+    @classmethod
+    def _create_parser(cls, key: str, annotation: Any) -> _ValueParser:
+        if isinstance(annotation, UnionType):
+            data_type, none_type = annotation.__args__
+            assert none_type is type(None)
+            return _ValueParser(key, data_type, False)
+
+        # if isinstance(annotation, GenericAlias):
+        #     print('_c_p: not implemented', key, annotation)
+        #     return None  # type: ignore[return-value]
+
+        return _ValueParser(key, annotation, True)
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
 
-        cls.__registry__[cls.__name__] = cls
+        cls.__schema__ = {}
 
-        try:
-            for key, value in get_type_hints(cls).items():
-                pass
-                # print(f'type hint {key=} {value=}')
-        except Exception as ex:
-            print(f'Error getting hints: {ex}')
+        for key, annotation in get_type_hints(cls, include_extras=True).items():
+            if key.startswith('_'):
+                continue
+
+            data_key = key
+            if hasattr(annotation, '__metadata__'):
+                (meta,) = annotation.__metadata__
+                annotation = annotation.__origin__
+                data_key = meta.key or data_key
+
+            cls.__schema__[data_key] = cls._create_parser(key, annotation)
 
         # TODO: Wrangle compound names.
         assert cls.__doc__ is not None
         cls.__doc__ += '\n\n' + DOC_TEMPLATE.format(name=cls.__name__.lower())
 
-    extensions: dict[str, Any]
-
     def __init__(self) -> None:
+        self._extensions: tuple[tuple[str, Any], ...] = ()
+
         cls = type(self)
         for key in get_type_hints(cls):
             setattr(self, key, None)
@@ -38,17 +83,22 @@ class _Object:
     def parse(cls, data: dict[str, Any]) -> '_Object':
         obj = cls()
 
-        for key, value in get_type_hints(cls).items():
-            if key not in data:
-                continue
-            elif issubclass(value, _Object):
-                parsed_value = value.parse(data[key])
-            else:
-                parsed_value = data[key]
+        extensions = []
+        for key, value in data.items():
+            if key.startswith('x-'):
+                extensions.append((key, value))
+            elif key not in cls.__schema__:
+                raise KeyError(f'unknown key: {key}')
+        obj._extensions = tuple(extensions)
 
-            setattr(obj, key, parsed_value)
+        for key, parser in cls.__schema__.items():
+            parser(data.get(key), obj)
 
         return obj
+
+    @property
+    def extensions(self) -> dict[str, Any]:
+        return dict(self._extensions)
 
 
 class _Meta:
@@ -60,3 +110,4 @@ class _Meta:
     ) -> None:
         self.required = required
         self.unsupported = unsupported
+        self.key = key

@@ -19,18 +19,20 @@ __all__ = (
 )
 
 
-class OpenAPI(Object):
-    """The root object of the OpenAPI Description."""
+class Contact(Object):
+    """Contact information for the exposed API."""
 
-    openapi: str
-    info: Annotated[Info, Meta(required=True)]
-    json_schema_dialect: Annotated[str, Meta(key='jsonSchemaDialect')]
-    servers: list[Server]
-    # webhooks
-    # components
-    # security
-    # tags
-    external_docs: Annotated[ExternalDocumentation, Meta(key='externalDocs')]
+    name: str | None
+    url: str | None
+    email: str | None
+
+
+class License(Object):
+    """License information for the exposed API."""
+
+    name: str
+    identifier: str | None
+    url: str | None
 
 
 class Info(Object):
@@ -40,44 +42,28 @@ class Info(Object):
     in editing or documentation generation tools for convenience.
     """
 
-    title: Annotated[str, Meta(required=True)]
-    summary: str
-    description: str
-    terms_of_service: Annotated[str, Meta(key='termsOfService')]
-    contact: Contact
-    license: License
-    version: Annotated[str, Meta(required=True)]
-
-
-class Contact(Object):
-    """Contact information for the exposed API."""
-
-    name: str
-    url: str
-    email: str
-
-
-class License(Object):
-    """License information for the exposed API."""
-
-    name: Annotated[str, Meta(required=True)]
-    identifier: str
-    url: str
+    title: str
+    summary: str | None
+    description: str | None
+    terms_of_service: Annotated[str | None, Meta(key='termsOfService')]
+    contact: Contact | None
+    license: License | None
+    version: str
 
 
 class Server(Object):
     """An object representing a Server."""
 
-    url: Annotated[str, Meta(required=True)]
-    description: str
+    url: str
+    description: str | None
     variables: Annotated[str, Meta(unsupported=True)]
 
 
 class ExternalDocumentation(Object):
     """Allows referencing an external resource for extended documentation."""
 
-    description: str
-    url: Annotated[str, Meta(required=True)]
+    description: str | None
+    url: str
 
 
 class PathItem(Object):
@@ -89,22 +75,36 @@ class PathItem(Object):
     not know which operations and parameters are available.
     """
 
-    summary: str
-    description: str
+    summary: str | None
+    description: str | None
 
 
 class Operation(Object):
     """Describes a single API operation on a path."""
 
-    tags: list[str]
-    summary: str
-    description: str
-    external_docs: Annotated[ExternalDocumentation, Meta(key='externalDocs')]
-    operation_id: Annotated[str, Meta(key='operationId')]
+    tags: tuple[str, ...] | None
+    summary: str | None
+    description: str | None
+    external_docs: Annotated[ExternalDocumentation | None, Meta(key='externalDocs')]
+    operation_id: Annotated[str | None, Meta(key='operationId')]
     # parameters
     # requestBody
     # responses
     # callbacks
     deprecated: bool
     # security: list[SecurityRequirement]
-    servers: list[Server]
+    servers: tuple[Server, ...] | None
+
+
+class OpenAPI(Object):
+    """The root object of the OpenAPI Description."""
+
+    openapi: str
+    info: Info
+    json_schema_dialect: Annotated[str | None, Meta(key='jsonSchemaDialect')]
+    servers: tuple[Server, ...] | None
+    # webhooks
+    # components
+    # security
+    # tags
+    external_docs: Annotated[ExternalDocumentation, Meta(key='externalDocs')]

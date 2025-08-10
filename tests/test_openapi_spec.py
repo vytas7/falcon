@@ -1,3 +1,5 @@
+import pytest
+
 from falcon.openapi import spec
 
 
@@ -28,3 +30,19 @@ def test_parse():
     assert info.contact.email == 'support@example.com'
 
     assert info.license.name == 'Apache 2.0'
+
+
+def test_missing_required_key():
+    with pytest.raises(ValueError):
+        spec.License.parse({})
+
+
+def test_unknown_key():
+    with pytest.raises(KeyError):
+        spec.License.parse({'name': 'MIT', 'flavor': 'custom'})
+
+
+def test_extensions():
+    license = spec.License.parse({'name': 'Apache 2.0', 'x-falcon': 'peregrine'})
+    assert license.name == 'Apache 2.0'
+    assert license.extensions == {'x-falcon': 'peregrine'}
