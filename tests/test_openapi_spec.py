@@ -32,6 +32,82 @@ def test_parse():
     assert info.license.name == 'Apache 2.0'
 
 
+def test_parse_complex():
+    data = {
+        'tags': ['pet'],
+        'summary': 'Updates a pet in the store with form data',
+        'operationId': 'updatePetWithForm',
+        'parameters': [
+            {
+                'name': 'petId',
+                'in': 'path',
+                'description': 'ID of pet that needs to be updated',
+                'required': True,
+                'schema': {'type': 'string'},
+            }
+        ],
+        'requestBody': {
+            'content': {
+                'application/x-www-form-urlencoded': {
+                    'schema': {
+                        'type': 'object',
+                        'properties': {
+                            'name': {
+                                'description': 'Updated name of the pet',
+                                'type': 'string',
+                            },
+                            'status': {
+                                'description': 'Updated status of the pet',
+                                'type': 'string',
+                            },
+                        },
+                        'required': ['status'],
+                    }
+                }
+            }
+        },
+        'responses': {
+            '200': {
+                'description': 'Pet updated.',
+                'content': {'application/json': {}, 'application/xml': {}},
+            },
+            '405': {
+                'description': 'Method Not Allowed',
+                'content': {
+                    'application/json': {},
+                    'application/xml': {},
+                },
+            },
+        },
+    }
+
+    operation = spec.Operation.parse(data)
+
+    assert operation.tags == ('pet',)
+    assert operation.operation_id == 'updatePetWithForm'
+
+    assert len(operation.parameters) == 1
+    (pet_id,) = operation.parameters
+    assert pet_id.name == 'petId'
+    assert pet_id.in_ == 'path'
+    assert pet_id.required
+
+    assert len(operation.responses) == 2
+    resp200 = operation.responses['200']
+    assert resp200.description == 'Pet updated.'
+
+
+def test_empty_dict():
+    data = {
+        'url': 'https://development.gigantic-server.com/v1',
+        'description': 'Development server',
+    }
+
+    server = spec.Server.parse(data)
+    assert server.description == 'Development server'
+    assert server.variables == {}
+
+
 def test_missing_required_key():
     with pytest.raises(ValueError):
         spec.License.parse({})

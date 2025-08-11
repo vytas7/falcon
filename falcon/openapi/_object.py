@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import GenericAlias
+from types import NoneType
 from types import UnionType
 from typing import Any, get_type_hints
 
@@ -8,20 +10,44 @@ DOC_TEMPLATE = (
 )
 
 
+def _to_camel_case(name: str) -> str:
+    first, *words = name.split('_')
+    return first + ''.join(word.title() for word in words)
+
+
 class _ValueParser:
-    def __init__(self, key: str, data_type: type, required: bool) -> None:
+    def __init__(
+        self, key: str, container: type | None, data_type: type, required: bool
+    ) -> None:
         self._key = key
+        self._container = container
         self._data_type = data_type
         self._required = required
 
     def __call__(self, value: Any, obj: _Object) -> None:
         if value is None:
-            if self._required:
+            if not self._required:
+                setattr(obj, self._key, None)
+            elif self._container is tuple or self._container is dict:
+                setattr(obj, self._key, self._container())
+            else:
                 raise ValueError(f'{self._key} is required')
-            setattr(obj, self._key, None)
         else:
-            if issubclass(self._data_type, _Object):
-                parsed: Any = self._data_type.parse(value)
+            # TODO: DRY this mess, it is a rough PoC to "make things work".
+            if self._container is tuple:
+                assert isinstance(value, list)
+                load: Any = self._data_type
+                if issubclass(self._data_type, _Object):
+                    load = self._data_type.parse
+                parsed: Any = tuple(load(item) for item in value)
+            elif self._container is dict:
+                assert isinstance(value, dict)
+                load = self._data_type
+                if issubclass(self._data_type, _Object):  # pragma: nocover
+                    load = self._data_type.parse
+                parsed = {key: load(value) for key, value in value.items()}
+            elif issubclass(self._data_type, _Object):
+                parsed = self._data_type.parse(value)
             else:
                 assert isinstance(value, self._data_type)
                 parsed = value
@@ -40,16 +66,25 @@ class _Object:
 
     @classmethod
     def _create_parser(cls, key: str, annotation: Any) -> _ValueParser:
+        required = True
+
         if isinstance(annotation, UnionType):
-            data_type, none_type = annotation.__args__
-            assert none_type is type(None)
-            return _ValueParser(key, data_type, False)
+            annotation, none_type = annotation.__args__
+            assert none_type is NoneType
+            required = False
 
-        # if isinstance(annotation, GenericAlias):
-        #     print('_c_p: not implemented', key, annotation)
-        #     return None  # type: ignore[return-value]
+        if isinstance(annotation, GenericAlias):
+            container: type = annotation.__origin__  # type: ignore[assignment]
+            if container is tuple:
+                data_type, ellipsis = annotation.__args__
+                assert ellipsis is Ellipsis
+            else:
+                assert container is dict
+                key_type, data_type = annotation.__args__
+                assert key_type is str
+            return _ValueParser(key, container, data_type, required)
 
-        return _ValueParser(key, annotation, True)
+        return _ValueParser(key, None, annotation, required)
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
@@ -60,11 +95,11 @@ class _Object:
             if key.startswith('_'):
                 continue
 
-            data_key = key
-            if hasattr(annotation, '__metadata__'):
-                (meta,) = annotation.__metadata__
-                annotation = annotation.__origin__
-                data_key = meta.key or data_key
+            data_key = _to_camel_case(key)
+            # if hasattr(annotation, '__metadata__'):
+            #     (meta,) = annotation.__metadata__
+            #     annotation = annotation.__origin__
+            #     data_key = meta.key or data_key
 
             cls.__schema__[data_key] = cls._create_parser(key, annotation)
 
@@ -101,13 +136,6 @@ class _Object:
         return dict(self._extensions)
 
 
-class _Meta:
-    def __init__(
-        self,
-        required: bool = False,
-        key: str | None = None,
-        unsupported: bool = False,
-    ) -> None:
-        self.required = required
-        self.unsupported = unsupported
-        self.key = key
+# class _Polymorphic:
+#     def __init__(self, on: str) -> None:
+#         self.on = on
