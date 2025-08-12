@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+import sys
+
 from types import GenericAlias
 from types import NoneType
 from types import UnionType
-from typing import Any, get_type_hints
+from typing import Any, get_type_hints, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    if sys.version_info >= (3, 11):
+        from typing import Self
+    else:
+        from typing import TypeAlias
+        Self: TypeAlias = '_Object'
 
 DOC_TEMPLATE = (
     '\n\n    See also: https://spec.openapis.org/oas/v3.1.1.html#{name}-object'
@@ -115,7 +124,7 @@ class _Object:
             setattr(self, key, None)
 
     @classmethod
-    def parse(cls, data: dict[str, Any]) -> '_Object':
+    def parse(cls, data: dict[str, Any]) -> Self:
         obj = cls()
 
         extensions = []
