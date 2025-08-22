@@ -1,6 +1,16 @@
+import pathlib
+
 import pytest
 
 from falcon.openapi import spec
+
+TESTS = pathlib.Path(__file__).resolve().parent
+
+
+@pytest.fixture(scope='session')
+def petstore_yaml():
+    path = TESTS / 'openapi' / 'petstore.yaml'
+    return path.read_text()
 
 
 def test_parse():
@@ -95,6 +105,17 @@ def test_parse_complex():
     assert len(operation.responses) == 2
     resp200 = operation.responses['200']
     assert resp200.description == 'Pet updated.'
+
+
+def test_parse_petstore_full(petstore_yaml):
+    yaml = pytest.importorskip('yaml', reason='this test requires PyYAML [not found]')
+    petstore = spec.OpenAPI.parse(yaml.safe_load(petstore_yaml))
+
+    assert petstore.openapi == '3.0.4'
+
+    pet_by_id = petstore.paths['/pet/{petId}']
+    assert pet_by_id.get.description == 'Returns a single pet.'
+    assert pet_by_id.get.operation_id == 'getPetById'
 
 
 def test_empty_dict():

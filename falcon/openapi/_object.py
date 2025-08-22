@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sys
-
 from types import GenericAlias
 from types import NoneType
 from types import UnionType
@@ -12,6 +11,7 @@ if TYPE_CHECKING:
         from typing import Self
     else:
         from typing import TypeAlias
+
         Self: TypeAlias = '_Object'
 
 DOC_TEMPLATE = (
@@ -136,7 +136,11 @@ class _Object:
         obj._extensions = tuple(extensions)
 
         for key, parser in cls.__schema__.items():
-            parser(data.get(key), obj)
+            # TODO: clean up these messy or unsupported parameters
+            if key in ('headers', 'security'):
+                setattr(obj, key, data.get(key))
+            else:
+                parser(data.get(key), obj)
 
         return obj
 
