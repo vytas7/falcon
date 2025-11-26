@@ -1520,3 +1520,20 @@ async def test_static_route(conductor, tmp_path):
                 pass
 
         assert exc_info.value.code == 3400
+
+
+async def test_streaming_no_messages(conductor):
+    # NOTE(vytas): Regression test for #2585: await ws.wait_ready() hung
+    # forever regardless of timeout even though ws.accept() was awaited.
+
+    class Channel:
+        async def on_websocket(self, req, ws):
+            await ws.accept()
+
+            while True:
+                await asyncio.sleep(0.1)
+
+    conductor.app.add_route('/ws', Channel())
+
+    async with conductor.websocket('/ws') as ws:
+        await ws.wait_ready(timeout=3.0)
