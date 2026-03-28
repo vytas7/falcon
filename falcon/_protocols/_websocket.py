@@ -1,0 +1,2 @@
+class _WebSocketProtocol:
+    pass
