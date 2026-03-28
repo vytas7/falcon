@@ -34,14 +34,16 @@ def _parse_headers(data: bytes) -> dict[bytes, bytes]:
     result: dict[bytes, bytes] = {}
 
     for header in data.split(b'\r\n'):
+        if not header:
+            break  # blank line signals end of headers section
+
         name, _, value = header.partition(b':')
         value = value.strip()
 
-        # TODO: uncomment after defining proper constants
-        # if name.rstrip(_FIELD_NAME_ALLOWED_CHARS):
-        #     raise ValueError('invalid field name')
-        # if value.rstrip(_FIELD_VALUE_ALLOWED_CHARS):
-        #     raise ValueError('invalid field value')
+        if name.translate(None, _FIELD_NAME_ALLOWED_CHARS):
+            raise ValueError('invalid field name')
+        if value.translate(None, _FIELD_VALUE_ALLOWED_CHARS):
+            raise ValueError('invalid field value')
 
         if name and value:
             result[name.lower()] = value

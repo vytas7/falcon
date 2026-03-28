@@ -206,6 +206,40 @@ BAD_REQUESTS = (
         'malformed HTTP version: wrong scheme',
         b'GET / HTTPS/1.1\r\nHost: localhost\r\n\r\n',
     ),
+    # Invalid header field names (RFC 9110 §5.1 / §5.6.2 token rules)
+    (
+        'header name contains space (whitespace, forbidden in token)',
+        b'GET / HTTP/1.1\r\nContent Type: text/html\r\n\r\n',
+    ),
+    (
+        'header name contains NUL (control character, forbidden in token)',
+        b'GET / HTTP/1.1\r\nContent\x00Type: text/html\r\n\r\n',
+    ),
+    (
+        'header name contains DEL (control character, forbidden in token)',
+        b'GET / HTTP/1.1\r\nContent\x7fType: text/html\r\n\r\n',
+    ),
+    (
+        'header name contains "(" (delimiter, forbidden in token)',
+        b'GET / HTTP/1.1\r\n(Bad-Header): value\r\n\r\n',
+    ),
+    # Invalid header field values (RFC 9110 §5.5)
+    (
+        'header value contains NUL byte',
+        b'GET / HTTP/1.1\r\nContent-Type: text/\x00html\r\n\r\n',
+    ),
+    (
+        'header value contains DEL byte',
+        b'GET / HTTP/1.1\r\nContent-Type: text/\x7fhtml\r\n\r\n',
+    ),
+    (
+        'header value contains bare CR',
+        b'GET / HTTP/1.1\r\nContent-Type: text/\rhtml\r\n\r\n',
+    ),
+    (
+        'header value contains bare LF',
+        b'GET / HTTP/1.1\r\nContent-Type: text/\nhtml\r\n\r\n',
+    ),
 )
 
 UNSUPPORTED_HTTP_VERSION_REQUESTS = (
