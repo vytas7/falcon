@@ -1,7 +1,26 @@
 import re
+
 # import timeit
 
-_STATUS_LINE_PATTERN = re.compile(rb'^([a-zA-Z0-9]+) ([\?a-zA-Z0-9=/-]+) HTTP/1.1$')
+# RFC 9110 §5.6.2 token characters (method) and RFC 3986 URI characters (target).
+# Method: tchar = ALPHA / DIGIT / "!" / "#" / "$" / "%" / "&" / "'" / "*" /
+#                 "+" / "-" / "." / "^" / "_" / "`" / "|" / "~"
+# Target: unreserved / pct-encoded / sub-delims / ":" / "@" / "/" / "?"
+#         (brackets "[" / "]" must be percent-encoded; "#" starts a fragment
+#         and must not appear in the request-target sent to the server)
+_STATUS_LINE_PATTERN = re.compile(
+    rb'^([a-zA-Z0-9!#$%&\'*+\-.^_`|~]+) ([a-zA-Z0-9/%?=&._~*:@!$\'()+,;-]+) HTTP/1\.1$'
+)
+
+# RFC 9110 §5.6.2: field-name = token (tchar+)
+_FIELD_NAME_ALLOWED_CHARS = (
+    b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!#$%&'*+-.^_`|~"
+)
+# RFC 9110 §5.5: field-value = *( SP / HTAB / VCHAR / obs-text )
+# VCHAR = %x21-7E, obs-text = %x80-FF
+_FIELD_VALUE_ALLOWED_CHARS = (
+    b' \t' + bytes(range(0x21, 0x7F)) + bytes(range(0x80, 0x100))
+)
 
 
 def _parse_status_line(line: bytes) -> tuple[bytes, bytes]:
@@ -17,10 +36,26 @@ def _parse_headers(data: bytes) -> dict[bytes, bytes]:
     for header in data.split(b'\r\n'):
         name, _, value = header.partition(b':')
         value = value.strip()
+
+        # TODO: uncomment after defining proper constants
+        # if name.rstrip(_FIELD_NAME_ALLOWED_CHARS):
+        #     raise ValueError('invalid field name')
+        # if value.rstrip(_FIELD_VALUE_ALLOWED_CHARS):
+        #     raise ValueError('invalid field value')
+
         if name and value:
             result[name.lower()] = value
 
     return result
+
+
+def _parse_headers_block(data: bytes) -> tuple[bytes, bytes, dict]:
+    status_line, crlf, headers = data.partition(b'\r\n')
+
+    if not crlf:
+        raise ValueError('no HTTP status line found')
+
+    return _parse_status_line(status_line) + (_parse_headers(headers),)
 
 
 class _HTTP11Protocol:
