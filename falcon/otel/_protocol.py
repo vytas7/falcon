@@ -51,7 +51,17 @@ def attrs_from_wsgi_environ(environ: dict[str, Any]) -> dict[str, Any]:
 
 
 def attrs_from_asgi_scope(scope: dict[str, Any]) -> dict[str, Any]:
-    """Extract pre-routing OTEL HTTP span attributes from an ASGI scope."""
+    """Extract pre-routing OTEL HTTP span attributes from an ASGI scope.
+
+    Also materializes ``scope['headers']`` in-place — ASGI only promises an
+    iterable of iterables, and downstream consumers (including our own carrier
+    getter during context extraction) must be able to traverse it more than
+    once. Each ``(name, value)`` pair is promoted to a tuple so single-pass
+    inner iterators don't get exhausted between reads.
+    """
+    headers = [tuple(item) for item in scope.get('headers') or ()]
+    scope['headers'] = headers
+
     attrs: dict[str, Any] = {}
 
     method = scope.get('method')
@@ -90,7 +100,7 @@ def attrs_from_asgi_scope(scope: dict[str, Any]) -> dict[str, Any]:
     if http_version:
         attrs[_semconv.NETWORK_PROTOCOL_VERSION] = http_version
 
-    for raw_name, raw_value in scope.get('headers') or ():
+    for raw_name, raw_value in headers:
         if raw_name == b'user-agent':
             try:
                 attrs[_semconv.USER_AGENT_ORIGINAL] = raw_value.decode('latin-1')
