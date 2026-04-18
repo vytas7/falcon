@@ -107,6 +107,8 @@ module = [
     "meinheld",
     "msgpack",
     "mujson",
+    "opentelemetry",
+    "opentelemetry.propagate",
     "pyximport",
     "testtools",
     "uvicorn"
