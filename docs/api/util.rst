@@ -73,6 +73,12 @@ These functions help traverse the barrier between sync and async code.
 .. autofunction:: falcon.async_to_sync
 .. autofunction:: falcon.runs_sync
 
+Task Manager
+~~~~~~~~~~~~
+
+.. autoclass:: falcon.tasks.TaskManager
+    :members:
+
 Other
 -----
 
