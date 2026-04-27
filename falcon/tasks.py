@@ -69,7 +69,7 @@ class TaskManager:
 
     @classmethod
     @contextlib.contextmanager
-    def start_in_thread(cls, daemon: bool = False) -> Iterator[TaskManager]:
+    def start_in_thread(cls) -> Iterator[TaskManager]:
         """Run a fresh event loop in a background thread.
 
         Creates a new :class:`TaskManager` whose :attr:`async_loop` runs on a
@@ -77,8 +77,10 @@ class TaskManager:
         installed as the loop's default executor. On exit, the loop is
         stopped and the thread is joined.
 
-        Args:
-            daemon: Whether the worker thread should be a daemon thread.
+        The worker thread is always a daemon thread so a forgotten or aborted
+        ``with``-block does not hang interpreter shutdown. Callers that need
+        in-flight tasks to complete before exit must close the context manager
+        explicitly.
 
         Yields:
             TaskManager: A manager whose loop is running in another thread,
@@ -95,7 +97,7 @@ class TaskManager:
         loop = manager.async_loop = asyncio.new_event_loop()
         loop.set_default_executor(manager.executor)
 
-        thread = threading.Thread(target=run_loop, args=(loop,), daemon=daemon)
+        thread = threading.Thread(target=run_loop, args=(loop,), daemon=True)
         thread.start()
 
         try:
