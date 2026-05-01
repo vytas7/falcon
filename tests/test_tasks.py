@@ -1,5 +1,8 @@
 import asyncio
 
+import pytest
+
+from falcon.errors import CompatibilityError
 from falcon.tasks import TaskManager
 
 
@@ -58,3 +61,19 @@ def test_iterate_async_empty():
         items = list(tm.iterate_async(producer()))
 
     assert items == []
+
+
+async def test_call_async_deadlock_guard():
+    async def noop():
+        return 1
+
+    async def producer():
+        yield 1
+
+    tm = TaskManager()
+    tm.async_loop = asyncio.get_running_loop()
+
+    with pytest.raises(CompatibilityError):
+        tm.call_async(noop)
+    with pytest.raises(CompatibilityError):
+        list(tm.iterate_async(producer()))

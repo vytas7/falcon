@@ -36,6 +36,7 @@ _CoroFunc = Callable[[], Coroutine[Any, Any, Any]]
 
 _NO_ASYNC_LOOP = 'no async loop is configured'
 _NO_EXECUTOR = 'no executor is configured'
+_WOULD_DEADLOCK = 'call would deadlock the configured async loop'
 
 
 class TaskManager:
@@ -120,6 +121,14 @@ class TaskManager:
     ) -> None:
         self._futures.add(future := loop.create_task(coro_func()))
         future.add_done_callback(self._futures.discard)
+
+    def _check_not_loop_thread(self) -> None:
+        try:
+            running = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        if running is self.async_loop:
+            raise CompatibilityError(_WOULD_DEADLOCK)
 
     def schedule_async(self, coro_func: _CoroFunc) -> None:
         """Schedule a coroutine factory to run on the event loop.
@@ -212,7 +221,8 @@ class TaskManager:
         """Run a coroutine on the cross-thread loop and block for its result.
 
         Must be called from a thread other than the one running
-        :attr:`async_loop`, otherwise the calling thread will deadlock.
+        :attr:`async_loop`; calling from the loop thread itself would
+        deadlock and raises :class:`~.CompatibilityError` instead.
 
         Args:
             coro: Coroutine function to invoke. Its returned coroutine is
@@ -224,10 +234,12 @@ class TaskManager:
             The value the coroutine resolves to.
 
         Raises:
-            CompatibilityError: :attr:`async_loop` is not configured.
+            CompatibilityError: :attr:`async_loop` is not configured, or the
+                call originates from the loop thread itself.
         """
         if self.async_loop is None:
             raise CompatibilityError(_NO_ASYNC_LOOP)
+        self._check_not_loop_thread()
 
         future = asyncio.run_coroutine_threadsafe(
             coro(*args, **kwargs), self.async_loop
@@ -272,8 +284,8 @@ class TaskManager:
         Each ``__anext__()`` step is scheduled on :attr:`async_loop` via
         :func:`asyncio.run_coroutine_threadsafe` and the result is awaited
         synchronously. Must be called from a thread other than the one
-        running :attr:`async_loop`, otherwise the calling thread will
-        deadlock.
+        running :attr:`async_loop`; calling from the loop thread itself
+        would deadlock and raises :class:`~.CompatibilityError` instead.
 
         Args:
             async_iterable: An asynchronous iterable to consume.
@@ -282,10 +294,12 @@ class TaskManager:
             Items produced by ``async_iterable``, one at a time.
 
         Raises:
-            CompatibilityError: :attr:`async_loop` is not configured.
+            CompatibilityError: :attr:`async_loop` is not configured, or the
+                call originates from the loop thread itself.
         """
         if self.async_loop is None:
             raise CompatibilityError(_NO_ASYNC_LOOP)
+        self._check_not_loop_thread()
 
         loop = self.async_loop
         iterator = async_iterable.__aiter__()
