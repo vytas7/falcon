@@ -46,6 +46,7 @@ from falcon.forwarded import Forwarded
 from falcon.media import Handlers
 from falcon.media.json import _DEFAULT_JSON_HANDLER
 from falcon.stream import BoundedStream
+from falcon.tasks import TaskManager
 from falcon.typing import ReadableIO
 from falcon.util import deprecation
 from falcon.util import ETag
@@ -2866,6 +2867,18 @@ class RequestOptions:
     By default, handlers are provided for the ``application/json``,
     ``application/x-www-form-urlencoded`` and ``multipart/form-data`` media types.
     """
+    task_manager: TaskManager
+    """A :class:`~falcon.tasks.TaskManager` object for scheduling tasks related
+    to request.
+
+    Initially, the WSGI flavor of :class:`~falcon.App` sets its
+    :attr:`~falcon.tasks.TaskManager.executor` attribute to a
+    :class:`~concurrent.futures.ThreadPoolExecutor` instance shared with
+    :attr:`resp_options.task_manager <falcon.ResponseOptions.task_manager>`,
+    but you can customize both task managers separately.
+
+    .. versionadded:: 4.3
+    """
 
     __slots__ = (
         'keep_blank_qs_values',
@@ -2874,6 +2887,7 @@ class RequestOptions:
         'strip_url_path_trailing_slash',
         'default_media_type',
         'media_handlers',
+        'task_manager',
     )
 
     def __init__(self) -> None:
@@ -2883,3 +2897,4 @@ class RequestOptions:
         self.strip_url_path_trailing_slash = False
         self.default_media_type = DEFAULT_MEDIA_TYPE
         self.media_handlers = Handlers()
+        self.task_manager = TaskManager()

@@ -44,6 +44,7 @@ from falcon.response_helpers import _format_header_value_list
 from falcon.response_helpers import _format_range
 from falcon.response_helpers import _header_property
 from falcon.response_helpers import _is_ascii_encodable
+from falcon.tasks import TaskManager
 from falcon.typing import Headers
 from falcon.typing import ReadableIO
 from falcon.util import dt_to_http
@@ -1456,12 +1457,25 @@ class ResponseOptions:
 
     .. versionadded:: 4.0
     """
+    task_manager: TaskManager
+    """A :class:`~falcon.tasks.TaskManager` object for scheduling tasks related
+    to response.
+
+    Initially, the WSGI flavor of :class:`~falcon.App` sets its
+    :attr:`~falcon.tasks.TaskManager.executor` attribute to a
+    :class:`~concurrent.futures.ThreadPoolExecutor` instance shared with
+    :attr:`req_options.task_manager <falcon.RequestOptions.task_manager>`,
+    but you can customize both task managers separately.
+
+    .. versionadded:: 4.3
+    """
 
     __slots__ = (
         'secure_cookies_by_default',
         'default_media_type',
         'media_handlers',
         'static_media_types',
+        'task_manager',
         'xml_error_serialization',
     )
 
@@ -1469,6 +1483,7 @@ class ResponseOptions:
         self.secure_cookies_by_default = True
         self.default_media_type = DEFAULT_MEDIA_TYPE
         self.media_handlers = Handlers()
+        self.task_manager = TaskManager()
         self.xml_error_serialization = True
 
         if not mimetypes.inited:

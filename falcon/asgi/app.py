@@ -1102,6 +1102,11 @@ class App(falcon.app.App[_ReqT, _RespT]):
     # Helper methods
     # ------------------------------------------------------------------------
 
+    def _set_up_executors(self) -> None:
+        # NOTE(vytas): This is not needed in ASGI -- we are happy with the
+        #   defaults (None/None).
+        pass
+
     def _schedule_callbacks(self, resp: Response) -> None:
         callbacks = resp._registered_callbacks
         # PERF(vytas): resp._registered_callbacks is already checked directly

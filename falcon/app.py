@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from inspect import iscoroutinefunction
 import pathlib
@@ -394,6 +395,7 @@ class App(Generic[_ReqT, _RespT]):
 
         self.req_options.default_media_type = media_type
         self.resp_options.default_media_type = media_type
+        self._set_up_executors()
 
         # NOTE(kgriffs): Add default error handlers
         self.add_error_handler(Exception, self._python_error_handler)
@@ -1095,6 +1097,11 @@ class App(Generic[_ReqT, _RespT]):
         return helpers.prepare_middleware(
             middleware=middleware, independent_middleware=independent_middleware
         )
+
+    def _set_up_executors(self) -> None:
+        default_executor = ThreadPoolExecutor()
+        self.req_options.task_manager.executor = default_executor
+        self.resp_options.task_manager.executor = default_executor
 
     def _get_responder(
         self, req: _ReqT

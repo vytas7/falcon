@@ -43,8 +43,9 @@ class TaskManager:
     """Coordinate async tasks and sync work across an event loop and executor.
 
     A :class:`TaskManager` bundles an :mod:`asyncio` event loop together with a
-    thread pool (or any other :class:`concurrent.futures.Executor`) and exposes
-    helpers for crossing the sync/async boundary in either direction.
+    thread pool (or any other :class:`concurrent.futures.Executor`), and
+    exposes helpers for thunking across the sync/async boundary in either
+    direction.
 
     The loop and executor may be supplied by an outer host (e.g., ASGI), or
     spawned on demand via :meth:`start_in_thread`. Methods that need a loop
@@ -74,9 +75,11 @@ class TaskManager:
         """Run a fresh event loop in a background thread.
 
         Creates a new :class:`TaskManager` whose :attr:`async_loop` runs on a
-        dedicated thread, backed by a :class:`~concurrent.futures.ThreadPoolExecutor`
-        installed as the loop's default executor. On exit, the loop is
-        stopped and the thread is joined.
+        dedicated thread, backed by a
+        :class:`~concurrent.futures.ThreadPoolExecutor` installed as the loop's
+        default executor.
+
+        On exit, the loop is stopped, and the thread is joined.
 
         The worker thread is always a daemon thread so a forgotten or aborted
         ``with``-block does not hang interpreter shutdown. Callers that need
@@ -150,7 +153,7 @@ class TaskManager:
             try:
                 loop = asyncio.get_running_loop()
             except RuntimeError:
-                raise CompatibilityError(_NO_ASYNC_LOOP) from None
+                raise CompatibilityError(_NO_ASYNC_LOOP)
             self._schedule_task(loop, coro_func)
 
         else:  # Assume different thread
@@ -203,7 +206,7 @@ class TaskManager:
         try:
             loop = self.async_loop or asyncio.get_running_loop()
         except RuntimeError:
-            raise CompatibilityError(_NO_ASYNC_LOOP) from None
+            raise CompatibilityError(_NO_ASYNC_LOOP)
 
         if kwargs:
             # NOTE(vytas): Executors don't accept **kwargs.
@@ -264,7 +267,7 @@ class TaskManager:
         try:
             loop = self.async_loop or asyncio.get_running_loop()
         except RuntimeError:
-            raise CompatibilityError(_NO_ASYNC_LOOP) from None
+            raise CompatibilityError(_NO_ASYNC_LOOP)
 
         iterator = iter(iterable)
         sentinel: Any = object()
@@ -285,7 +288,7 @@ class TaskManager:
         :func:`asyncio.run_coroutine_threadsafe` and the result is awaited
         synchronously. Must be called from a thread other than the one
         running :attr:`async_loop`; calling from the loop thread itself
-        would deadlock and raises :class:`~.CompatibilityError` instead.
+        would deadlock and raises :class:`~falcon.CompatibilityError` instead.
 
         Args:
             async_iterable: An asynchronous iterable to consume.
