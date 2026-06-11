@@ -56,7 +56,7 @@ def test_iterate_async():
 def test_iterate_async_empty():
     async def producer():
         if False:
-            yield  # pragma: no cover
+            yield
 
     with TaskManager.start_in_thread() as tm:
         items = list(tm.iterate_async(producer()))
@@ -106,7 +106,7 @@ async def test_schedule_async_running_loop():
 
 def test_schedule_async_no_loop():
     async def work():
-        pass  # pragma: no cover
+        pass
 
     tm = TaskManager()
     with pytest.raises(CompatibilityError):
@@ -153,7 +153,7 @@ def test_call_sync_no_loop():
 
 def test_call_async_no_loop():
     async def noop():
-        return 1  # pragma: no cover
+        return 1
 
     tm = TaskManager()
     with pytest.raises(CompatibilityError):
@@ -169,7 +169,7 @@ def test_iterate_sync_no_loop():
 
 def test_iterate_async_no_loop():
     async def producer():
-        yield 1  # pragma: no cover
+        yield 1
 
     tm = TaskManager()
     with pytest.raises(CompatibilityError):
