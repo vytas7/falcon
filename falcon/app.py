@@ -558,16 +558,16 @@ class App(Generic[_ReqT, _RespT]):
 
             headers: list[tuple[str, str]] = resp._wsgi_headers(default_media_type)
 
+            # Return the response per the WSGI spec.
+            start_response(resp_status, headers)
+            return body
+
         except Exception as ex:
             if self._report_error is not None:
-                self._report_error(req, ex, handled=False)
+                self._report_error(req, ex, params, False)
             else:
                 req.log_error(traceback.format_exc())
             raise
-
-        # Return the response per the WSGI spec.
-        start_response(resp_status, headers)
-        return body
 
     # NOTE(caselit): the return type depends on the router, hardcoded to
     # CompiledRouterOptions for convenience.
@@ -1052,7 +1052,10 @@ class App(Generic[_ReqT, _RespT]):
             self._error_handlers[exc] = handler
 
     def set_error_reporter(self, reporter: ErrorReporter[_ReqT]) -> None:
-        """TODO: write me"""
+        """Write me.
+
+        (TODO)
+        """
 
         self._report_error = reporter
 
@@ -1285,19 +1288,20 @@ class App(Generic[_ReqT, _RespT]):
             exception, ``False`` otherwise.
         """
         try:
+            err_handler = self._find_error_handler(ex)
+
             # PERF(vytas): Only call the reporter if a third party one is
             #   installed (instead having a default catch-all method).
             if self._report_error is not None:
-                self._report_error(req, ex, handled=True)
+                self._report_error(req, ex, params, err_handler is not None)
 
-            err_handler = self._find_error_handler(ex)
             if err_handler is None:
                 # NOTE(kgriffs): No error handlers are defined for ex and it is
                 #   not one of (HTTPStatus, HTTPError), since it would have
                 #   matched one of the corresponding default handlers.
-                # NOTE(vytas): It should be noted that it is hard to hit this
-                #   path in Falcon 3.0+ without manipulating the app's private
-                #   variables, as we always install an Exception handler.
+                # NOTE(vytas): It is hard to hit this path in Falcon 3.0+
+                #   without manipulating the app's private variables, as we
+                #   always install an Exception handler.
                 return False
 
             # NOTE(caselit): Reset body, data and media before calling the handler.
@@ -1308,11 +1312,11 @@ class App(Generic[_ReqT, _RespT]):
                     err_handler(req, resp, ex, params)
                 except HTTPStatus as status:
                     if self._report_error is not None:
-                        self._report_error(req, status, handled=True)
+                        self._report_error(req, status, params, True)
                     self._compose_status_response(req, resp, status)
                 except HTTPError as error:
                     if self._report_error is not None:
-                        self._report_error(req, error, handled=True)
+                        self._report_error(req, error, params, True)
                     self._compose_error_response(req, resp, error)
 
                 return True
@@ -1320,19 +1324,27 @@ class App(Generic[_ReqT, _RespT]):
         except Exception as handler_ex:
             if handler_ex is ex:
                 # NOTE(vytas): The handler opted to reraise the same exception;
-                #   we assume that was intentional, and it is preferred to
-                #   handle errors outside of the app (as Hug used to do).
+                #   we assume that it is preferred to handle errors outside of
+                #   the Falcon app (as Hug used to do).
                 raise
 
             # PERF(vytas): Only call the reporter if a third party one is
             #   installed (instead having a default catch-all method).
             if self._report_error is not None:
-                self._report_error(req, handler_ex, handled=False)
+                self._report_error(req, handler_ex, params, False)
             else:
                 # NOTE(vytas): Our default inline "reporter".
                 req.log_error(traceback.format_exc())
 
-        return False
+            # NOTE(vytas): Reraise the handler/serializer exception here since
+            #   (1) the original ex has already been reported as handled=True, and
+            #   (2) it is consistent with the previous framework versions.
+            raise
+
+        # TODO(vytas): The below line is currently unreachable, hence the pragma.
+        #   But it will be reachable in the future if/when we add default 500
+        #   response for edge cases. We also want to keep it to avoid surprises.
+        return False  # pragma: nocover
 
     # PERF(kgriffs): Moved from api_helpers since it is slightly faster
     # to call using self, and this function is called for most

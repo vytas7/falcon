@@ -254,6 +254,17 @@ class TestErrorHandler:
         assert result.status_code == 404
         assert result.headers['X-name'] == 'HTTPRouteNotFound'
 
+    def test_faulty_serializer(self, asgi, util):
+        def faulty_serializer(req, resp, ex):
+            resp.content_type = falcon.MEDIA_TEXT
+            resp.text = f'status={ex.status_code} bitrate={0 / 0}\n'
+
+        app = util.create_app(asgi)
+        app.set_error_serializer(faulty_serializer)
+
+        with pytest.raises(ZeroDivisionError):
+            falcon.testing.simulate_get(app, '/404')
+
 
 class NoBodyResource:
     def on_get(self, req, res):
