@@ -449,7 +449,7 @@ class _WSContextManager:
 
         try:
             await asyncio.wait_for(self._task_req, self._close_timeout)
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as ex:
             # TODO(vytas): Here we catch and reraise asyncio.TimeoutError,
             #   which is a deprecated alias of the built-in TimeoutError since
             #   Python 3.11; however, we still support 3.10 in the Falcon 4.x
@@ -464,7 +464,7 @@ class _WSContextManager:
                 f'(If you intentionally want to test how a long running task is '
                 f'cancelled by the ASGI server, you can pass a short timeout '
                 f'value to simulate_ws, and catch this asyncio.TimeoutError.)'
-            )
+            ) from ex
 
 
 class ASGIWebSocketSimulator:
@@ -559,13 +559,13 @@ class ASGIWebSocketSimulator:
 
         try:
             await asyncio.wait_for(self._event_handshake_complete.wait(), timeout)
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as ex:
             raise asyncio.TimeoutError(
                 f'Timed out after waiting {timeout} seconds for the WebSocket '
                 f'handshake to complete. Check the on_websocket responder and '
                 f'any middleware for any conditions that may be stalling the '
                 f'request flow.'
-            )
+            ) from ex
 
         self._require_accepted()
 
