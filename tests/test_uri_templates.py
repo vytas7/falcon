@@ -14,6 +14,7 @@ import pytest
 
 import falcon
 from falcon import testing
+from falcon.routing.converters import RegexConverter
 from falcon.routing.util import SuffixedMethodNotFoundError
 
 _TEST_UUID = uuid.uuid4()
@@ -449,6 +450,26 @@ def test_converter_custom(client, resource, uri_template, path, expected):
     assert result.status_code == 200
     assert resource.called
     assert resource.captured_kwargs == expected
+
+
+def test_converter_custom_repath(client, resource):
+    class RePathConverter(RegexConverter):
+        CONSUME_MULTIPLE_SEGMENTS = True
+
+        def convert(self, value):
+            if isinstance(value, list):
+                value = '/'.join(value)
+
+            return super().convert(value)
+
+    client.app.router_options.converters['repath'] = RePathConverter
+    client.app.add_route('/{spam:repath("spam(\\x2fspam)*")}', resource)
+
+    result = client.simulate_get('/spam/spam/spam/spam')
+
+    assert result.status_code == 200
+    assert resource.called
+    assert resource.captured_kwargs == {'spam': 'spam/spam/spam/spam'}
 
 
 def test_single_trailing_slash(client):
