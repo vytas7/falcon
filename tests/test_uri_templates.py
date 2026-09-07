@@ -396,12 +396,12 @@ def test_uuid_converter_complex_segment(client, resource):
     'uri_template, path, expected',
     [
         (
-            r'/{product:regex(r"product-(?P<product_id>\d+)")}',
+            r'/{product:re(r"product-(?P<product_id>\d+)")}',
             '/product-1337',
             {'product': 'product-1337'},
         ),
         (
-            r'/{product:regex(r"product-(?P<product_id>\d+)", "product_id")}',
+            r'/{product:re(r"product-(?P<product_id>\d+)", "product_id")}',
             '/product-1337',
             {'product': '1337'},
         ),

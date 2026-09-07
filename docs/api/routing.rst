@@ -295,7 +295,7 @@ Built-in Converters
  ``dt``        :class:`~.DateTimeConverter`       ``/logs/{day:dt("%Y-%m-%d")}``
  ``float``     :class:`~.FloatConverter`          ``/python/versions/{version:float(min=3.7)}``
  ``path``      :class:`~.PathConverter`           ``/prefix/{other:path}``
- ``regex``     :class:`~.RegexConverter`          ``/prefix/{name:regex([a-zA-z])}``
+ ``re``        :class:`~.RegexConverter`          ``/prefix/{name:re([a-zA-z])}``
 ============  =================================  ==================================================================
 
 |

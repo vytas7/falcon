@@ -59,7 +59,7 @@ class BaseConverter(metaclass=abc.ABCMeta):
 
         Returns:
             object: Converted field value, or ``None`` if the field
-                can not be converted.
+            can not be converted.
         """
 
 
@@ -70,7 +70,7 @@ def _consumes_multiple_segments(converter: object) -> bool:
 class IntConverter(BaseConverter):
     """Converts a field value to an int.
 
-    Identifier: `int`
+    Identifier: ``int``
 
     Keyword Args:
         num_digits (int): Require the value to have the given
@@ -137,7 +137,7 @@ def _validate_min_max_value(
 class FloatConverter(BaseConverter):
     """Converts a field value to an float.
 
-    Identifier: `float`
+    Identifier: ``float``
 
     Keyword Args:
         min (float): Reject the value if it is less than this number.
@@ -180,7 +180,7 @@ class FloatConverter(BaseConverter):
 class DateTimeConverter(BaseConverter):
     """Converts a field value to a datetime.
 
-    Identifier: `dt`
+    Identifier: ``dt``
 
     Keyword Args:
         format_string (str): String used to parse the field value
@@ -210,7 +210,7 @@ class DateTimeConverter(BaseConverter):
 class UUIDConverter(BaseConverter):
     """Converts a field value to a uuid.UUID.
 
-    Identifier: `uuid`
+    Identifier: ``uuid``
 
     In order to be converted, the field value must consist of a
     string of 32 hexadecimal digits, as defined in RFC 4122, Section 3.
@@ -226,6 +226,8 @@ class UUIDConverter(BaseConverter):
 
 class PathConverter(BaseConverter):
     """Field converted used to match the rest of the path.
+
+    Identifier: ``path``
 
     This field converter matches the remainder of the URL path,
     returning it as a string.
@@ -254,17 +256,52 @@ class PathConverter(BaseConverter):
 class RegexConverter(BaseConverter):
     """Field converter used to match a field value against a regular expression.
 
-    Identifier: `regex`
+    Identifier: ``re``
+
+    In the current iteration, this field converter only captures a single URL
+    segment (unlike :class:`PathConverter`). However, if needed, you can easily
+    :ref:`customize <routing_custom_converters>` it by subclassing and enabling
+    ``CONSUME_MULTIPLE_SEGMENTS``::
+
+        class RePathConverter(RegexConverter):
+            CONSUME_MULTIPLE_SEGMENTS = True
+
+            def convert(self, value: str | list[str]) -> str:
+                if not isinstance(value, str):
+                    value = '/'.join(value)
+                return super().convert(value)
+
+        # <...>
+
+        # Register the new converter class
+        app.router_options.converters['repath'] = RePathConverter
+
+    Note:
+        In certain edge case scenarios, the ``/`` and ``}`` characters inside a
+        converter's arguments may get misinterpreted as part of the URI
+        template structure. It is possible to work around the problem by using
+        hexadecimal escape sequences in lieu of the "problematic" characters,
+        even though it looks awkward (note that the ``\\`` part of the sequence
+        must be first escaped as a literal backslash inside the URI template
+        before it is interpreted again)::
+
+            app.add_route('/{spam:repath("spam(\\\\x2fspam)*")}', resource)
+
+        Here we are using the above custom ``repath`` converter to match any
+        number of ``/spam/spam/.../spam`` segments.
+
+        (See also the discussion on the GitHub issue
+        `#2062 <https://github.com/falconry/falcon/issues/2062>`__.)
 
     Keyword Args:
         pattern (str): A regex pattern that the value must match.
             The entire value must match (anchored). The pattern must be a
             :class:`str` (not :class:`bytes`).
-        group(str | None): An optional named group name to return as the
-            converted field value. Note that if the group is optional (e.g.,
-            ``r'product(?P<product_id>\\d+)?')``, and it was omitted in the
-            matched URL segment, it would be treated as a failure to convert
-            the value (resulting in :class:`~falcon.HTTPRouteNotFound`).
+        group(str | None): An optional named group to return as the converted
+            field value. Note that if the group is optional (e.g.,
+            ``r'product(?P<id>\\d+)?')``, and it was omitted in the matched URL
+            segment, it would be treated as a failure to convert the value
+            (resulting in :class:`~falcon.HTTPRouteNotFound`).
     """
 
     _pattern: re.Pattern[str]
@@ -305,5 +342,5 @@ BUILTIN = (
     ('uuid', UUIDConverter),
     ('float', FloatConverter),
     ('path', PathConverter),
-    ('regex', RegexConverter),
+    ('re', RegexConverter),
 )
