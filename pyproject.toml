@@ -109,6 +109,7 @@ module = [
     "cbor2",
     "cython",
     "daphne",
+    "granian",
     "gunicorn",
     "hypercorn",
     "meinheld",
@@ -247,5 +248,5 @@ testpaths = [
 
 [tool.cibuildwheel]
 build-frontend = "build"
-test-requires = ["-r requirements/cibwtest"]
+test-requires = ["-r", "requirements/cibwtest"]
 test-command = "pytest {project}/tests"
