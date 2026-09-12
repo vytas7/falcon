@@ -52,7 +52,6 @@ jobs:
           - env: py311_cython
             python-version: "3.11"
           - env: py312
-            coverage: true
             python-version: "3.12"
           - env: py312_cython
             python-version: "3.12"
@@ -61,6 +60,7 @@ jobs:
           - env: py313_cython
             python-version: "3.13"
           - env: py314
+            coverage: true
             python-version: "3.14"
           - env: py314_cython
             python-version: "3.14"
@@ -92,7 +92,7 @@ jobs:
           #   newly released Firefox 131.0, SeleniumBase, and our tests.
           # NOTE(vytas,cycloctane): Apparently, it seems that the issue is
           #   caused by a segfault in Uvicorn, but it happens only in Actions.
-          - env: "e2e_firefox"
+          # - env: "e2e_firefox"
 
     steps:
       - name: Checkout repo
