@@ -198,13 +198,13 @@ class TestASGIServer:
 
 class TestStaticFiles:
     def test_get(self, server_base_url, requests):
-        expected = (_asgi_test_app.FALCON_ROOT / 'LICENSE').read_text()
+        expected = (_asgi_test_app.FALCON_ROOT / 'LICENSE').read_bytes()
 
         resp = requests.get(
             server_base_url + 'static/LICENSE', timeout=_REQUEST_TIMEOUT
         )
         assert resp.status_code == 200
-        assert resp.text == expected
+        assert resp.content == expected
 
         range_resp = requests.get(
             server_base_url + 'static/LICENSE',
@@ -212,7 +212,7 @@ class TestStaticFiles:
             timeout=_REQUEST_TIMEOUT,
         )
         assert range_resp.status_code == 206
-        assert range_resp.text == expected[13 : 37 + 1]
+        assert range_resp.content == expected[13 : 37 + 1]
 
     def test_not_modified(self, server_base_url, requests):
         resp1 = requests.get(
