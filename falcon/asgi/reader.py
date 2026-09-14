@@ -224,6 +224,9 @@ class BufferedReader:
                 if remaining == 0:  # pragma: no py39,py310 cover
                     break
 
+            # TODO(vytas): Remove the py314 pragmas in this module if
+            #   https://github.com/nedbat/coveragepy/issues/1999 gets resolved
+            #   before CPython 3.14.0 stable is out.
             # PERF(vytas) Don't join unless necessary.
             return (
                 result[0] if len(result) == 1 else b''.join(result)

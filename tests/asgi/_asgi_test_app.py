@@ -124,6 +124,29 @@ class Feed:
         await ws.send_text(feed_id)
 
 
+class Stream:
+    def __init__(self):
+        self._counter = Counter()
+
+    async def on_get(self, req, resp):
+        async def emit():
+            completed = False
+            try:
+                s = 0
+                while s <= SSE_TEST_MAX_DELAY_SEC:
+                    yield b'hello world\n'
+                    await asyncio.sleep(s)
+                    s += SSE_TEST_MAX_DELAY_SEC / 4
+                completed = True
+            finally:
+                self._counter['completed' if completed else 'aborted'] += 1
+
+        resp.stream = emit()
+
+    async def on_get_stats(self, req, resp):
+        resp.media = dict(self._counter)
+
+
 class Events:
     async def on_get(self, req, resp):
         async def emit():
@@ -296,6 +319,9 @@ def create_app():
     app.add_route('/bucket', bucket)
     app.add_route('/bucket/drops', bucket, suffix='drops')
     app.add_route('/events', Events())
+    stream = Stream()
+    app.add_route('/stream', stream)
+    app.add_route('/stream/stats', stream, suffix='stats')
     app.add_route('/forms', Multipart())
     app.add_route('/jars', TestJar())
     app.add_route('/feeds/{feed_id}', Feed())

@@ -17,6 +17,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncGenerator
+from collections.abc import AsyncIterator
 from collections.abc import Awaitable
 from collections.abc import Iterable
 from inspect import isasyncgenfunction
@@ -61,7 +63,10 @@ from falcon.errors import HTTPBadRequest
 from falcon.errors import WebSocketDisconnected
 from falcon.http_error import HTTPError
 from falcon.http_status import HTTPStatus
+from falcon.media.base import BaseHandler
 from falcon.media.multipart import MultipartFormHandler
+from falcon.typing import AsyncReadableIO
+from falcon.typing import SSEEmitter
 from falcon.util.deprecation import DeprecatedWarning
 from falcon.util.misc import _has_arg_name
 from falcon.util.misc import is_python_func
@@ -92,6 +97,81 @@ _BODILESS_STATUS_CODES = frozenset([100, 101, 204, 304])
 _TYPELESS_STATUS_CODES = frozenset([204, 304])
 
 _FALLBACK_WS_ERROR_CODE = 3011
+
+
+async def _close_stream(stream: Any) -> None:
+    if hasattr(stream, 'close'):
+        await stream.close()
+    elif hasattr(stream, 'aclose'):
+        await stream.aclose()
+
+
+async def _read_chunks(
+    stream: AsyncReadableIO, block_size: int
+) -> AsyncGenerator[bytes, None]:
+    try:
+        while True:
+            data = await stream.read(block_size)
+            if data == b'':
+                break
+
+            # NOTE(vytas): A non-blocking stream may return None when no data
+            #   is available at the moment; we just keep reading in that case.
+            yield data or b''
+    finally:
+        await _close_stream(stream)
+
+
+async def _iter_chunks(
+    stream: AsyncIterator[bytes | None],
+) -> AsyncGenerator[bytes, None]:
+    try:
+        async for data in stream:
+            # NOTE(vytas): StopIteration cannot propagate out of a coroutine
+            #   (see also PEP 479 and PEP 492), so async iterators ported from
+            #   synchronous code sometimes signal exhaustion by returning None
+            #   instead of raising StopAsyncIteration. We support this pattern
+            #   as documented for Response.stream.
+            if data is None:
+                break
+
+            yield data
+
+    except TypeError as ex:
+        if isasyncgenfunction(stream):
+            raise TypeError(
+                'The object assigned to Response.stream appears to '
+                'be an async generator function. A generator '
+                'object is expected instead. This can be obtained '
+                'simply by calling the generator function, e.g.: '
+                'resp.stream = some_asyncgen_function()'
+            )
+
+        raise TypeError(
+            'Response.stream must be a generator or implement an '
+            '__aiter__ method. Error raised while iterating over '
+            'Response.stream: ' + str(ex)
+        )
+
+    finally:
+        await _close_stream(stream)
+
+
+async def _iter_sse_chunks(
+    emitter: SSEEmitter, handler: BaseHandler | None
+) -> AsyncGenerator[bytes, None]:
+    async for event in emitter:
+        if not event:
+            event = SSEvent()
+
+        yield event.serialize(handler)
+
+
+async def _watch_disconnect(receive: AsgiReceive) -> None:
+    while True:
+        event = await receive()
+        if event['type'] == EventType.HTTP_DISCONNECT:
+            break
 
 
 class App(falcon.app.App[_ReqT, _RespT]):
@@ -706,73 +786,9 @@ class App(falcon.app.App[_ReqT, _RespT]):
         # PERF(vytas): Operate directly on the resp private interface to reduce
         #   overhead since this is a hot/critical code path.
         if resp._sse:
-            sse_emitter = resp._sse
-            if isasyncgenfunction(sse_emitter):
-                raise TypeError(
-                    'Response.sse must be an async iterable. This can be obtained by '
-                    'simply executing the async generator function and then setting '
-                    'the result to Response.sse, e.g.: '
-                    'resp.sse = some_asyncgen_function()'
-                )
-
-            # NOTE(kgriffs): This must be done in a separate task because
-            #   receive() can block for some time (until the connection is
-            #   actually closed).
-            async def watch_disconnect() -> None:
-                while True:
-                    received_event = await receive()
-                    if received_event['type'] == EventType.HTTP_DISCONNECT:
-                        break
-
-            watcher = asyncio.create_task(watch_disconnect())
-
-            await send(
-                {
-                    'type': EventType.HTTP_RESPONSE_START,
-                    'status': resp_status,
-                    'headers': resp._asgi_headers('text/event-stream'),
-                }
+            await self._send_streamed_response(
+                req, resp, receive, send, resp_status, default_media_type
             )
-
-            # PERF(vytas): Check resp._registered_callbacks directly to shave
-            #   off a function call since this is a hot/critical code path.
-            if resp._registered_callbacks:
-                self._schedule_callbacks(resp)
-
-            sse_handler, _, _ = self.resp_options.media_handlers._resolve(
-                MEDIA_JSON, MEDIA_JSON, raise_not_found=False
-            )
-
-            # TODO(kgriffs): Do we need to do anything special to handle when
-            #   a connection is closed?
-            async for event in sse_emitter:
-                if not event:
-                    event = SSEvent()
-
-                # NOTE(kgriffs): According to the ASGI spec, once the client
-                #   disconnects, send() acts as a no-op. We have to check
-                #   the connection state using watch_disconnect() above.
-                await send(
-                    {
-                        'type': EventType.HTTP_RESPONSE_BODY,
-                        'body': event.serialize(sse_handler),
-                        'more_body': True,
-                    }
-                )
-
-                if watcher.done():  # pragma: no py39,py310 cover
-                    break
-
-            # TODO(vytas): Remove these py314 pragmas here and in reader.py if
-            #   https://github.com/nedbat/coveragepy/issues/1999 gets resolved
-            #   before CPython 3.14.0 stable is out.
-            watcher.cancel()  # pragma: no py314 cover
-            try:
-                await watcher
-            except asyncio.CancelledError:
-                pass
-
-            await send({'type': EventType.HTTP_RESPONSE_BODY})
             return
 
         if data is not None:
@@ -810,9 +826,13 @@ class App(falcon.app.App[_ReqT, _RespT]):
                 self._schedule_callbacks(resp)
             return
 
-        stream = resp.stream
-        if not stream:
-            resp._headers['content-length'] = '0'
+        if resp.stream:
+            await self._send_streamed_response(
+                req, resp, receive, send, resp_status, default_media_type
+            )
+            return
+
+        resp._headers['content-length'] = '0'
 
         await send(
             {
@@ -824,79 +844,126 @@ class App(falcon.app.App[_ReqT, _RespT]):
             }
         )
 
-        if stream:
+        await send(_EVT_RESP_EOF)
+
+        # PERF(vytas): Check resp._registered_callbacks directly to shave
+        #   off a function call since this is a hot/critical code path.
+        if resp._registered_callbacks:
+            self._schedule_callbacks(resp)
+
+    async def _send_streamed_response(
+        self,
+        req: Request,
+        resp: Response,
+        receive: AsgiReceive,
+        send: AsgiSend,
+        status: int,
+        default_media_type: str | None,
+    ) -> None:
+        chunks: AsyncGenerator[bytes, None]
+        sse_emitter = resp._sse
+
+        if sse_emitter:
+            if isasyncgenfunction(sse_emitter):
+                raise TypeError(
+                    'Response.sse must be an async iterable. This can be obtained by '
+                    'simply executing the async generator function and then setting '
+                    'the result to Response.sse, e.g.: '
+                    'resp.sse = some_asyncgen_function()'
+                )
+
+            sse_handler, _, _ = self.resp_options.media_handlers._resolve(
+                MEDIA_JSON, MEDIA_JSON, raise_not_found=False
+            )
+            chunks = _iter_sse_chunks(sse_emitter, sse_handler)
+            default_media_type = 'text/event-stream'
+            watch_disconnect = True
+
+        else:
             # Detect whether this is one of the following:
             #
             #   (a) async file-like object (e.g., aiofiles)
             #   (b) async generator
             #   (c) async iterator
             #
-
+            stream = resp.stream
             if hasattr(stream, 'read'):
-                try:
-                    while True:
-                        data = await stream.read(self._STREAM_BLOCK_SIZE)
-                        if data == b'':
-                            break
-                        else:
-                            await send(
-                                {
-                                    'type': EventType.HTTP_RESPONSE_BODY,
-                                    # NOTE(kgriffs): Handle the case in which
-                                    #   data is None
-                                    'body': data or b'',
-                                    'more_body': True,
-                                }
-                            )
-                finally:
-                    if hasattr(stream, 'close'):
-                        await stream.close()
+                chunks = _read_chunks(stream, self._STREAM_BLOCK_SIZE)  # type: ignore[arg-type]
             else:
-                # NOTE(kgriffs): Works for both async generators and iterators
+                chunks = _iter_chunks(stream)  # type: ignore[arg-type]
+
+            # NOTE(vytas): The disconnect watcher discards any events other than
+            #   'http.disconnect', so it is only safe to start once the request
+            #   body has been received in full. Otherwise, we could swallow
+            #   request body chunks that the app still wants to read while
+            #   streaming the response.
+            req_stream = req._stream
+            if req_stream is None:
+                first_event = req._first_event
+                watch_disconnect = not (first_event and first_event.get('more_body'))
+            else:
+                watch_disconnect = req_stream._bytes_remaining == 0
+
+        watcher: asyncio.Task[None] | None = None
+        if watch_disconnect:
+            # NOTE(kgriffs): This must be done in a separate task because
+            #   receive() can block for some time (until the connection is
+            #   actually closed).
+            watcher = asyncio.create_task(_watch_disconnect(receive))
+
+        disconnected = False
+        try:
+            await send(
+                {
+                    'type': EventType.HTTP_RESPONSE_START,
+                    'status': status,
+                    'headers': resp._asgi_headers(default_media_type),
+                }
+            )
+
+            # NOTE(vytas): An SSE emitter may never be exhausted, so we cannot
+            #   defer scheduled callbacks until the end of the stream.
+            if sse_emitter and resp._registered_callbacks:
+                self._schedule_callbacks(resp)
+
+            async for chunk in chunks:
+                # NOTE(vytas): Most ASGI servers simply ignore send() once the
+                #   client has disconnected, so we check the connection state
+                #   via the watcher task above (if any). However, servers
+                #   implementing ASGI HTTP spec 2.4+ may raise an OSError.
                 try:
-                    async for data in stream:
-                        # NOTE(kgriffs): We can not rely on StopIteration
-                        #   because of Pep 479 that is implemented starting
-                        #   with Python 3.7. AFAICT this is only an issue
-                        #   when using an async iterator instead of an async
-                        #   generator.
-                        if data is None:
-                            break
-
-                        await send(
-                            {
-                                'type': EventType.HTTP_RESPONSE_BODY,
-                                'body': data,
-                                'more_body': True,
-                            }
-                        )
-                except TypeError as ex:
-                    if isasyncgenfunction(stream):
-                        raise TypeError(
-                            'The object assigned to Response.stream appears to '
-                            'be an async generator function. A generator '
-                            'object is expected instead. This can be obtained '
-                            'simply by calling the generator function, e.g.: '
-                            'resp.stream = some_asyncgen_function()'
-                        )
-
-                    raise TypeError(
-                        'Response.stream must be a generator or implement an '
-                        '__aiter__ method. Error raised while iterating over '
-                        'Response.stream: ' + str(ex)
+                    await send(
+                        {
+                            'type': EventType.HTTP_RESPONSE_BODY,
+                            'body': chunk,
+                            'more_body': True,
+                        }
                     )
-                finally:
-                    # NOTE(vytas): This could be DRYed with the above identical
-                    #   twoliner in a one large block, but OTOH we would be
-                    #   unable to reuse the current try.. except.
-                    if hasattr(stream, 'close'):  # pragma: no py314 cover
-                        await stream.close()
+                except OSError:
+                    disconnected = True
+                    break
 
-        await send(_EVT_RESP_EOF)
+                if watcher is not None and watcher.done():
+                    disconnected = True
+                    break
 
-        # PERF(vytas): Check resp._registered_callbacks directly to shave
-        #   off a function call since this is a hot/critical code path.
-        if resp._registered_callbacks:
+        finally:
+            await chunks.aclose()
+
+            if watcher is not None:
+                watcher.cancel()
+                # NOTE(vytas): Catching CancelledError around awaiting the
+                #   watcher would also swallow a cancellation of this task
+                #   (e.g., by a server upon client disconnect) arriving at the
+                #   same time. gather(), on the other hand, lets the latter
+                #   propagate, while returning (rather than raising) the
+                #   watcher's own outcome.
+                await asyncio.gather(watcher, return_exceptions=True)
+
+        if not disconnected:
+            await send(_EVT_RESP_EOF)
+
+        if not sse_emitter and resp._registered_callbacks:
             self._schedule_callbacks(resp)
 
     def add_middleware(

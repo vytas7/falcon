@@ -179,6 +179,25 @@ class TestASGIServer:
                 timeout=(_asgi_test_app.SSE_TEST_MAX_DELAY_SEC / 2),
             )
 
+    def test_stream_client_disconnects_early(self, server_base_url, requests):
+        """Test that streaming is stopped when the client connection is lost."""
+        with pytest.raises(requests.exceptions.ConnectionError):
+            requests.get(
+                server_base_url + 'stream',
+                timeout=(_asgi_test_app.SSE_TEST_MAX_DELAY_SEC / 2),
+            )
+
+        stats = {}
+        start = time.time()
+        while not stats and time.time() - start < 5:
+            time.sleep(0.1)
+            resp = requests.get(
+                server_base_url + 'stream/stats', timeout=_REQUEST_TIMEOUT
+            )
+            stats = resp.json()
+
+        assert stats == {'aborted': 1}
+
     async def test_stream_chunked_request(self, server_base_url, httpx):
         """Regression test for https://github.com/falconry/falcon/issues/2024"""
 

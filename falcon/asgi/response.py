@@ -76,8 +76,16 @@ class Response(response.Response):
 
     If the object assigned to :attr:`~.stream` holds any resources
     (such as a file handle) that must be explicitly released, the
-    object must implement a ``close()`` method. The ``close()`` method
-    will be called after exhausting the iterable or file-like object.
+    object must implement an awaitable ``close()`` or ``aclose()`` method
+    (the latter is only used in the absence of ``close()``). The method
+    will be called after exhausting the iterable or file-like object, or
+    after streaming has been stopped early, for instance, because the
+    client has disconnected.
+
+    Falcon stops streaming as soon as it detects that the client has
+    disconnected. Since the ASGI connection is shared with the request body,
+    disconnects can only be detected once the request body has been
+    received in full (which is always the case for requests without a body).
 
     Note:
         In order to be compatible with Python 3.7+ and PEP 479,
